@@ -1,0 +1,18 @@
+[package]
+name = "openapirs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "openapirs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "test-parse"
+path = "test/test-parse.rs"
+
+[dependencies]
+serde = { version = "1", features = [ "derive"] }
+serde_yml = { version = "0" }
+uriparse = { version = "0" }
+indexmap = { version = "2", features = [ "serde" ] }
