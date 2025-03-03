@@ -5,12 +5,10 @@
 
 use crate::schema::data_type::DataType;
 use crate::schema::media_type::MediaType;
-use crate::schema::Sref;
-use crate::typing::{AlwaysTrue, TaggedString};
-use serde::{
-    de::{self, Visitor},
-    Deserialize, Deserializer,
-};
+use crate::schema::reference::Reference;
+use crate::typing::AlwaysTrue;
+use crate::typing::TaggedString;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct Parameter {
@@ -95,45 +93,9 @@ pub struct Content {
 #[derive(Deserialize, Debug)]
 pub struct None {}
 
-#[derive(Debug)]
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
 pub enum ParameterOrReference {
     Parameter(Parameter),
-    Reference(Sref),
-}
-
-impl<'de> Deserialize<'de> for ParameterOrReference {
-    fn deserialize<D>(de: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        struct LocalVisitor;
-
-        impl<'de> Visitor<'de> for LocalVisitor {
-            type Value = ParameterOrReference;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("Path parameter must be either Reference or Parameter object")
-            }
-
-            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
-            where
-                E: de::Error,
-            {
-                value
-                    .parse()
-                    .map_err(de::Error::custom)
-                    .map(ParameterOrReference::Reference)
-            }
-
-            fn visit_map<V>(self, map: V) -> Result<Self::Value, V::Error>
-            where
-                V: de::MapAccess<'de>,
-            {
-                Deserialize::deserialize(de::value::MapAccessDeserializer::new(map))
-                    .map(ParameterOrReference::Parameter)
-            }
-        }
-
-        de.deserialize_any(LocalVisitor)
-    }
+    Reference(Reference),
 }

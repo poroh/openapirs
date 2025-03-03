@@ -22,9 +22,16 @@ pub struct Object {
         rename = "additionalProperties",
         skip_serializing_if = "Option::is_none"
     )]
-    pub additional_properties: Option<Box<DataType>>,
+    pub additional_properties: Option<Box<AdditionalProperties>>,
     #[serde(rename = "propertyNames", skip_serializing_if = "Option::is_none")]
     pub property_names: Option<Box<DataType>>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum AdditionalProperties {
+    Bool(bool),
+    Schema(DataType),
 }
 
 // TODO:

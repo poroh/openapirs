@@ -11,7 +11,7 @@ extern crate openapirs;
 #[derive(Debug)]
 enum Error {
     IoError(std::io::Error),
-    SerdeYmlError(serde_yml::Error),
+    SerdeYmlError(serde_yaml::Error),
 }
 
 fn main() -> Result<(), Error> {
@@ -19,12 +19,12 @@ fn main() -> Result<(), Error> {
     let mut contents = String::new();
     file.read_to_string(&mut contents).map_err(Error::IoError)?;
     let spec: openapirs::schema::Description =
-        serde_yml::from_str(&contents).map_err(Error::SerdeYmlError)?;
+        serde_yaml::from_str(&contents).map_err(Error::SerdeYmlError)?;
     //println!("{spec:?}");
     if let Some(paths) = spec.components.and_then(|v| v.schemas) {
         for (path, item) in paths.into_iter() {
             println!("");
-            println!("{path:?}:\n{item:?}");
+            println!("{path:?}: {item:?}");
         }
     }
     Ok(())

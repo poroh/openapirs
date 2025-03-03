@@ -11,3 +11,6 @@ pub type TaggedURI<T> = tagged_uri::TaggedURI<T>;
 
 pub mod always_true;
 pub type AlwaysTrue = always_true::AlwaysTrue;
+
+pub mod always_false;
+pub type AlwaysFalse = always_false::AlwaysFalse;
