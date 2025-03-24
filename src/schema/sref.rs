@@ -3,7 +3,7 @@
 // Schema reference ($ref)
 //
 
-use crate::schema::parameter;
+use crate::typing::TaggedString;
 use serde::de;
 use serde::de::Visitor;
 use serde::Deserialize;
@@ -12,12 +12,15 @@ use serde::Deserializer;
 #[derive(Debug)]
 pub struct Sref(String);
 
+pub type SRefParameter = TaggedString<SRefParameterTag>;
+pub enum SRefParameterTag {}
+
 const PARAMETERS_PREFIX: &str = "#/components/parameters/";
 
 impl Sref {
-    pub fn parameter_name(&self) -> Option<parameter::Name> {
+    pub fn parameter_sref(&self) -> Option<SRefParameter> {
         if self.0.starts_with(PARAMETERS_PREFIX) {
-            Some(parameter::Name::new(
+            Some(SRefParameter::new(
                 self.0.as_str()[PARAMETERS_PREFIX.len()..].into(),
             ))
         } else {

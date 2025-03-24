@@ -26,12 +26,14 @@ pub struct Operation<'a> {
     pub op_type: OperationType,
     pub path: &'a Path,
     pub path_params: HashMap<&'a parameter::Name, &'a Parameter>,
+    //pub query_params: HashMap<&'a parameter::Name, &'a Parameter>,
 }
 
 #[derive(Debug)]
 pub enum Error {
     PathParseError(PathParseError),
     ParameterNotDefined(Path, parameter::Name),
+    NotDefinedAsPathParameter(Path, parameter::Name),
 }
 
 pub fn compile(d: &schema::Description) -> Result<Compiled, Error> {
@@ -61,40 +63,51 @@ pub fn compile_operation<'a>(
     op: &'a schema::operation::Operation,
     components: &'a Option<Components>,
 ) -> Result<Operation<'a>, Error> {
-    let mut path_params = HashMap::new();
-    for v in path.path_params_iter() {
-        let name = parameter::Name::new(v.map_err(Error::PathParseError)?.into());
-        op.parameters
-            .as_ref()
-            .and_then(|ps| {
-                ps.iter().find(|p| match p {
-                    parameter::ParameterOrReference::Parameter(p) => match p.place {
-                        parameter::Place::Path(_) => {
-                            path_params.insert(&p.name, p);
-                            true
-                        }
-                        _ => false,
-                    },
-                    parameter::ParameterOrReference::Reference(sref) => sref
-                        .sref
-                        .parameter_name()
-                        .as_ref()
-                        .and_then(|name| components.as_ref().and_then(|c| c.find_parameter(name)))
-                        .map(|p| match p.place {
-                            parameter::Place::Path(_) => {
-                                path_params.insert(&p.name, p);
-                                true
-                            }
-                            _ => false,
-                        })
-                        .unwrap_or(false),
+    let path_params = path
+        .path_params_iter()
+        .map(|pname| {
+            let name = pname
+                .map_err(Error::PathParseError)
+                .map(|v| parameter::Name::new(v.into()))?;
+            resolve_parameter(op, &name, components)
+                .ok_or(Error::ParameterNotDefined(path.clone(), name.clone()))
+                .and_then(|p| match p.place {
+                    parameter::Place::Path(_) => Ok(p),
+                    _ => Err(Error::NotDefinedAsPathParameter(path.clone(), name.clone())),
                 })
-            })
-            .ok_or(Error::ParameterNotDefined(path.clone(), name))?;
-    }
+                .map(|v| (&v.name, v))
+        })
+        .collect::<Result<HashMap<_, _>, _>>()?;
+
     Ok(Operation {
         op_type,
         path,
         path_params,
+        // query_params,
+    })
+}
+
+pub fn resolve_parameter<'a>(
+    op: &'a schema::operation::Operation,
+    pname: &parameter::Name,
+    components: &'a Option<Components>,
+) -> Option<&'a Parameter> {
+    op.parameters.as_ref().and_then(|ps| {
+        for p in ps.iter() {
+            let candidate = match p {
+                parameter::ParameterOrReference::Parameter(p) => Some(p),
+                parameter::ParameterOrReference::Reference(sref) => sref
+                    .sref
+                    .parameter_sref()
+                    .as_ref()
+                    .and_then(|sref| components.as_ref().and_then(|c| c.find_parameter(sref))),
+            };
+            if let Some(candidate) = candidate {
+                if &candidate.name == pname {
+                    return Some(candidate);
+                }
+            }
+        }
+        None
     })
 }

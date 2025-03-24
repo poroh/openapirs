@@ -45,6 +45,12 @@ impl<Tag> std::fmt::Debug for TaggedString<Tag> {
     }
 }
 
+impl<Tag> Clone for TaggedString<Tag> {
+    fn clone(&self) -> Self {
+        Self::new(self.v.clone())
+    }
+}
+
 impl<'de, Tag> Deserialize<'de> for TaggedString<Tag> {
     fn deserialize<D>(de: D) -> Result<Self, D::Error>
     where
