@@ -19,10 +19,7 @@ pub enum Error {
 
 impl Path {
     pub fn path_params_iter(&self) -> PathParamTryIter {
-        PathParamTryIter {
-            data: &self,
-            pos: 0,
-        }
+        PathParamTryIter { data: self, pos: 0 }
     }
 }
 
@@ -97,7 +94,7 @@ impl<'a> Iterator for PathParamTryIter<'a> {
                 rest[start_index..]
                     .find('}')
                     .ok_or(PathParseError::CannotFindCloseBrackets(
-                        self.data.0.clone().into(),
+                        self.data.0.clone(),
                         start_index + self.pos,
                     ))
                     .map(|end_index| (start_index, start_index + end_index))

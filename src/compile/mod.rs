@@ -75,7 +75,19 @@ pub fn compile_operation<'a>(
                         }
                         _ => false,
                     },
-                    parameter::ParameterOrReference::Reference(_) => false,
+                    parameter::ParameterOrReference::Reference(sref) => sref
+                        .sref
+                        .parameter_name()
+                        .as_ref()
+                        .and_then(|name| components.as_ref().and_then(|c| c.find_parameter(name)))
+                        .map(|p| match p.place {
+                            parameter::Place::Path(_) => {
+                                path_params.insert(&p.name, p);
+                                true
+                            }
+                            _ => false,
+                        })
+                        .unwrap_or(false),
                 })
             })
             .ok_or(Error::ParameterNotDefined(path.clone(), name))?;

@@ -3,13 +3,28 @@
 // Schema reference ($ref)
 //
 
-use serde::{
-    de::{self, Visitor},
-    Deserialize, Deserializer,
-};
+use crate::schema::parameter;
+use serde::de;
+use serde::de::Visitor;
+use serde::Deserialize;
+use serde::Deserializer;
 
 #[derive(Debug)]
 pub struct Sref(String);
+
+const PARAMETERS_PREFIX: &str = "#/components/parameters/";
+
+impl Sref {
+    pub fn parameter_name(&self) -> Option<parameter::Name> {
+        if self.0.starts_with(PARAMETERS_PREFIX) {
+            Some(parameter::Name::new(
+                self.0.as_str()[PARAMETERS_PREFIX.len()..].into(),
+            ))
+        } else {
+            None
+        }
+    }
+}
 
 impl std::fmt::Display for Sref {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
