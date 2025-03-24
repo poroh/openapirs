@@ -32,9 +32,9 @@ impl std::str::FromStr for Version {
                 .ok_or(Error::NoExpectedVersionPart(name))
                 .and_then(|v| v.parse().map_err(|e| Error::InvalidVersionPart((name, e))))
         };
-        let major: u32 = parse_part(&mut split, &"major")?;
-        let minor: u32 = parse_part(&mut split, &"minor")?;
-        let patch: u32 = parse_part(&mut split, &"patch")?;
+        let major: u32 = parse_part(&mut split, "major")?;
+        let minor: u32 = parse_part(&mut split, "minor")?;
+        let patch: u32 = parse_part(&mut split, "patch")?;
         if let Some(v) = split.next() {
             Err(Error::UnexpectedRemainder(v.into()))?
         }

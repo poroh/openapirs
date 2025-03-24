@@ -13,7 +13,7 @@ pub struct TaggedURI<Tag> {
     _marker: std::marker::PhantomData<Tag>,
 }
 
-impl<'a, Tag> TaggedURI<Tag> {
+impl<Tag> TaggedURI<Tag> {
     fn from_uri(uri: uriparse::URI<'_>) -> Self {
         Self {
             v: uri.to_string(),

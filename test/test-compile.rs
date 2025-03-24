@@ -2,10 +2,10 @@
 //
 // Parsing of openapi spec
 //
-
-use std::io::Read;
-
 extern crate openapirs;
+
+use openapirs::compile;
+use std::io::Read;
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -13,6 +13,7 @@ enum Error {
     Io(std::io::Error),
     SerdeYml(serde_yaml::Error),
     ParameterNeeded,
+    Compile(compile::Error),
 }
 
 fn main() -> Result<(), Error> {
@@ -27,18 +28,9 @@ fn main() -> Result<(), Error> {
     file.read_to_string(&mut contents).map_err(Error::Io)?;
     let spec: openapirs::schema::Description =
         serde_yaml::from_str(&contents).map_err(Error::SerdeYml)?;
-    //println!("{spec:?}");
-    if let Some(paths) = spec.paths {
-        for (path, item) in paths.into_iter() {
-            println!();
-            println!("{path:?}: {item:?}");
-        }
-    }
-    if let Some(components) = spec.components.and_then(|v| v.schemas) {
-        for (component, item) in components.into_iter() {
-            println!();
-            println!("{component:?}: {item:?}");
-        }
+    let result = compile::compile(&spec).map_err(Error::Compile)?;
+    for v in result.operations.iter() {
+        println!("{v:?}");
     }
     Ok(())
 }

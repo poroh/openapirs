@@ -8,13 +8,22 @@ use serde::{
     Deserialize, Deserializer,
 };
 
-#[derive(Debug, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone)]
 pub struct Path(String);
 
 #[derive(Debug)]
 pub enum Error {
     MustNotbeEmpty,
     MustStartWithRoot,
+}
+
+impl Path {
+    pub fn path_params_iter(&self) -> PathParamTryIter {
+        PathParamTryIter {
+            data: &self,
+            pos: 0,
+        }
+    }
 }
 
 impl std::str::FromStr for Path {
@@ -62,5 +71,42 @@ impl<'de> Deserialize<'de> for Path {
         }
 
         de.deserialize_string(VersionVisitor)
+    }
+}
+
+#[derive(Debug)]
+pub enum PathParseError {
+    CannotFindCloseBrackets(String, usize),
+}
+
+pub struct PathParamTryIter<'a> {
+    data: &'a Path,
+    pos: usize,
+}
+
+impl<'a> Iterator for PathParamTryIter<'a> {
+    type Item = Result<&'a str, PathParseError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pos >= self.data.0.len() {
+            return None;
+        }
+        let rest = &self.data.0[self.pos..];
+        rest.find('{')
+            .map(|start_index| {
+                rest[start_index..]
+                    .find('}')
+                    .ok_or(PathParseError::CannotFindCloseBrackets(
+                        self.data.0.clone().into(),
+                        start_index + self.pos,
+                    ))
+                    .map(|end_index| (start_index, start_index + end_index))
+            })
+            .map(|r| {
+                r.map(|(start, end)| {
+                    self.pos = self.pos + end + 1;
+                    &rest[start + 1..end]
+                })
+            })
     }
 }

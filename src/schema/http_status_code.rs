@@ -64,7 +64,7 @@ pub struct Specific(u16);
 impl TryFrom<u16> for Specific {
     type Error = Error;
     fn try_from(v: u16) -> Result<Self, Error> {
-        if v >= 100 && v <= 599 {
+        if (100..=599).contains(&v) {
             Ok(Self(v))
         } else {
             Err(Error::CodeOutsideRange(v, 100, 599))
@@ -94,12 +94,12 @@ impl std::fmt::Debug for Pattern {
 impl std::str::FromStr for Pattern {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut chars = s.chars().into_iter();
+        let mut chars = s.chars();
         let code_class = chars
             .next()
             .and_then(|v| v.to_digit(10))
             .and_then(|v| {
-                if v >= 1 && v <= 5 {
+                if (1..=5).contains(&v) {
                     Some(v as u8)
                 } else {
                     None
