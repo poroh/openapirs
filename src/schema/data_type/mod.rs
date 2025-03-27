@@ -14,7 +14,6 @@ use crate::schema::data_type::default::NullableDefault;
 use crate::schema::discriminator::Discriminator;
 use crate::schema::external_doc::ExternalDoc;
 use crate::schema::reference::Reference;
-use crate::typing::AlwaysFalse;
 use crate::typing::AlwaysTrue;
 use serde::de;
 use serde::de::Deserializer;
@@ -64,14 +63,6 @@ pub struct NullableTypeSchema {
     pub nullable: AlwaysTrue,
     #[serde(flatten)]
     pub schema: NullalbleTypeSchema,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct NormalTypeSchema {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nullable: Option<AlwaysFalse>,
-    #[serde(flatten)]
-    pub schema: TypeSchema,
 }
 
 #[derive(Deserialize, Debug)]

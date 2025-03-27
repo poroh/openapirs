@@ -13,7 +13,7 @@ enum Error {
     Io(std::io::Error),
     SerdeYml(serde_yaml::Error),
     ParameterNeeded,
-    Compile(compile::Error),
+    Compile(String),
 }
 
 fn main() -> Result<(), Error> {
@@ -28,7 +28,7 @@ fn main() -> Result<(), Error> {
     file.read_to_string(&mut contents).map_err(Error::Io)?;
     let spec: openapirs::schema::Description =
         serde_yaml::from_str(&contents).map_err(Error::SerdeYml)?;
-    let result = compile::compile(&spec).map_err(Error::Compile)?;
+    let result = compile::compile(&spec).map_err(|err| Error::Compile(format!("{err:?}")))?;
     for v in result.operations.iter() {
         println!("{v:?}");
     }

@@ -43,6 +43,8 @@ pub enum Place {
 #[derive(Deserialize, Debug)]
 pub struct QueryFlags {
     #[serde(default)] // default is false
+    pub required: bool,
+    #[serde(default)] // default is false
     pub deprecated: bool,
     #[serde(rename = "allowEmptyValue", default)] // default is false
     pub allow_empty_value: bool,
