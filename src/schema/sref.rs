@@ -14,14 +14,26 @@ pub struct Sref(String);
 
 pub type SRefParameter = TaggedString<SRefParameterTag>;
 pub enum SRefParameterTag {}
+pub type SRefRequestBody = TaggedString<SRefRequestBodyTag>;
+pub enum SRefRequestBodyTag {}
 
 const PARAMETERS_PREFIX: &str = "#/components/parameters/";
+const REQUEST_BODIES_PREFIX: &str = "#/components/requestBodies/";
 
 impl Sref {
     pub fn parameter_sref(&self) -> Option<SRefParameter> {
         if self.0.starts_with(PARAMETERS_PREFIX) {
             Some(SRefParameter::new(
                 self.0.as_str()[PARAMETERS_PREFIX.len()..].into(),
+            ))
+        } else {
+            None
+        }
+    }
+    pub fn request_body_sref(&self) -> Option<SRefRequestBody> {
+        if self.0.starts_with(REQUEST_BODIES_PREFIX) {
+            Some(SRefRequestBody::new(
+                self.0.as_str()[REQUEST_BODIES_PREFIX.len()..].into(),
             ))
         } else {
             None
