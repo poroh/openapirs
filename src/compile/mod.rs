@@ -39,7 +39,7 @@ pub struct Parameter<'a> {
 #[derive(Debug)]
 pub struct RequestBody<'a> {
     pub schema_body: &'a SchemaRequestBody,
-    pub json_model: Option<model::Name>,
+    // pub json: Option<model::Name>,
 }
 
 #[derive(Debug)]
@@ -170,8 +170,12 @@ impl<'a> OpCompileData<'a> {
             })
             .transpose()?
             .map(|schema_body| {
-                let json = DataType::resolve_body_json(schema_body, self.components.as_ref())?;
-                Ok(RequestBody { schema_body, json })
+                let json_model =
+                    DataType::resolve_body_json(schema_body, self.components.as_ref())?;
+                Ok(RequestBody {
+                    schema_body,
+                    //json: json_model.name,
+                })
             })
             .transpose()?;
 
