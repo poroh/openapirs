@@ -3,7 +3,6 @@
 // Compiled model
 //
 
-use crate::schema::components::Components;
 use crate::schema::data_type::array::Array as SchemaArray;
 use crate::schema::data_type::default::NonNullableDefault;
 use crate::schema::data_type::default::NullableDefault;
@@ -17,16 +16,16 @@ use crate::schema::path_item::OperationType;
 use crate::schema::PropertyName as SchemaPropertyName;
 
 #[derive(Debug)]
-pub enum Name {
-    PathNameRequest(PathNameRequest),
+pub enum Name<'a> {
+    PathNameRequest(PathNameRequest<'a>),
     PathNameResponse(PathNameResponse),
     SchemaName(String),
-    PropertyName(PropertyName),
+    PropertyName(PropertyName<'a>),
 }
 
 #[derive(Debug)]
-pub struct PathNameRequest {
-    pub path: Path,
+pub struct PathNameRequest<'a> {
+    pub path: &'a Path,
     pub op: OperationType,
 }
 
@@ -37,8 +36,8 @@ pub struct PathNameResponse {
 }
 
 #[derive(Debug)]
-pub struct PropertyName {
-    pub base_name: Box<Name>,
+pub struct PropertyName<'a> {
+    pub base_name: Box<Name<'a>>,
     pub property_name: SchemaPropertyName,
 }
 
@@ -55,7 +54,7 @@ pub struct ObjectModel<'a> {
 
 #[derive(Debug)]
 pub struct ArrayModel<'a> {
-    pub item_model: Name,
+    pub item_model: Name<'a>,
     pub schema: &'a SchemaArray,
 }
 
@@ -88,12 +87,12 @@ pub enum NormalObjectModelPoperty<'a> {
 
 #[derive(Debug)]
 pub struct ObjectProperty<'a> {
-    pub model: Name,
+    pub model: Name<'a>,
     pub schema: &'a SchemaObject,
 }
 
 #[derive(Debug)]
 pub struct ArrayProperty<'a> {
-    pub item_model: Name,
+    pub item_model: Name<'a>,
     pub schema: &'a SchemaArray,
 }

@@ -39,7 +39,8 @@ pub struct Parameter<'a> {
 #[derive(Debug)]
 pub struct RequestBody<'a> {
     pub schema_body: &'a SchemaRequestBody,
-    // pub json: Option<model::Name>,
+    pub data_type: Option<DataType<'a>>,
+    pub name: model::Name<'a>,
 }
 
 #[derive(Debug)]
@@ -170,11 +171,19 @@ impl<'a> OpCompileData<'a> {
             })
             .transpose()?
             .map(|schema_body| {
-                let json_model =
-                    DataType::resolve_body_json(schema_body, self.components.as_ref())?;
+                let rr = DataType::resolve_body_json(schema_body, self.components.as_ref())?;
+                let (data_type, schema_name) = rr
+                    .map(|r| (Some(r.data_type), r.schema_name))
+                    .unwrap_or((None, None));
                 Ok(RequestBody {
                     schema_body,
-                    //json: json_model.name,
+                    data_type,
+                    name: schema_name.cloned().map(model::Name::SchemaName).unwrap_or(
+                        model::Name::PathNameRequest(model::PathNameRequest {
+                            op: op_type.clone(),
+                            path: self.path,
+                        }),
+                    ),
                 })
             })
             .transpose()?;
