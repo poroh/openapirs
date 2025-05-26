@@ -13,13 +13,13 @@ use crate::schema::request_body::RequestBodyOrReference;
 use crate::schema::responses::ResponseOrReference;
 use crate::schema::sref::SRefParameter;
 use crate::schema::sref::SRefRequestBody;
-use crate::schema::sref::SRefSchemas;
+use crate::schema::sref::SRefSchemasObjectName;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct Components {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schemas: Option<indexmap::IndexMap<SRefSchemas, DataType>>,
+    pub schemas: Option<indexmap::IndexMap<SRefSchemasObjectName, DataType>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub responses: Option<indexmap::IndexMap<String, ResponseOrReference>>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -78,5 +78,9 @@ impl Components {
                         .and_then(|sref| self.do_find_request_body(&sref, depth + 1)),
                 })
         }
+    }
+
+    pub fn find_schema_by_name(&self, sref: &SRefSchemasObjectName) -> Option<&DataType> {
+        self.schemas.as_ref().and_then(|schemas| schemas.get(sref))
     }
 }

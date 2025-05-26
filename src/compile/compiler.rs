@@ -4,6 +4,7 @@
 //
 
 use crate::compile::data_type::ActualType;
+use crate::compile::data_type::CompiledArray;
 use crate::compile::data_type::CompiledObject;
 use crate::compile::data_type::CompiledType;
 use crate::compile::data_type::DataType;
@@ -13,15 +14,18 @@ use crate::compile::data_type::TypeOrRef;
 use crate::compile::schema_chain::CompiledSchemas;
 use crate::compile::schema_chain::SchemaChain;
 use crate::schema::components::Components;
+use crate::schema::data_type::array::Array as SchemaArray;
 use crate::schema::data_type::object::Object as SchemaObject;
 use crate::schema::data_type::ActualType as SchemaActualType;
 use crate::schema::data_type::DataType as SchemaDataType;
 use crate::schema::data_type::MaybeNullableTypeSchema;
 use crate::schema::data_type::NullableTypeSchema;
 use crate::schema::data_type::TypeSchema;
+use crate::schema::reference::Reference;
 use crate::schema::request_body::RequestBody as SchemaRequestBody;
 use crate::schema::sref::SRef;
 use crate::schema::sref::SRefSchemas;
+use crate::schema::sref::SRefSchemasObjectName;
 use crate::schema::PropertyName;
 use indexmap::indexmap;
 
@@ -31,10 +35,13 @@ const MAX_DEPTH: u32 = 1024;
 pub enum Error<'a> {
     UnexpecetedReferenceType(&'a SRef),
     SchemasNotDefinedButReferenced,
-    SchemaRefernceNotFound(SRefSchemas),
-    SchemaCompilation(SRefSchemas, Box<Error<'a>>),
+    SchemaRefernceNotFound(SRefSchemasObjectName),
+    SchemaCompilation(SRefSchemasObjectName, Box<Error<'a>>),
     PropertyCompilation(&'a PropertyName, Box<Error<'a>>),
+    ReferenceError(crate::schema::sref::Error),
     MaxDepthReached(u32),
+    NoItemsInArray,
+    ArrayItemCompilation(Box<Error<'a>>),
 }
 
 pub fn compile_body_json<'a, 'b>(
@@ -59,45 +66,7 @@ pub fn compile<'a, 'b>(
         return Err(Error::MaxDepthReached(depth));
     }
     match sdt {
-        SchemaDataType::Reference(r) => {
-            let schemas_ref = r
-                .sref
-                .schemas_sref()
-                .ok_or(Error::UnexpecetedReferenceType(&r.sref))?;
-            if chain.contains(&schemas_ref) {
-                // If schema has been already compiled just refer to it
-                Ok(DataTypeWithSchema {
-                    type_or_ref: TypeOrRef::Reference(schemas_ref),
-                    schemas: CompiledSchemas::default(),
-                })
-            } else {
-                // If schema has not been compiled:
-                let schemas = components
-                    .and_then(|components| components.schemas.as_ref())
-                    .ok_or(Error::SchemasNotDefinedButReferenced)?;
-                let schema = schemas
-                    .get(&schemas_ref)
-                    .ok_or(Error::SchemaRefernceNotFound(schemas_ref.clone()))?;
-                let compiled_schema = compile(schema, components, chain, depth + 1)
-                    .map_err(|err| Error::SchemaCompilation(schemas_ref.clone(), Box::new(err)))?;
-                match compiled_schema.type_or_ref {
-                    TypeOrRef::ActualType(dt) => Ok(DataTypeWithSchema {
-                        type_or_ref: TypeOrRef::Reference(schemas_ref.clone()),
-                        schemas: indexmap! {
-                            schemas_ref => dt
-                        },
-                    }),
-                    TypeOrRef::Reference(sref) => {
-                        // reference to reference. In this case we just
-                        // follow further reference
-                        Ok(DataTypeWithSchema {
-                            type_or_ref: TypeOrRef::Reference(sref),
-                            schemas: compiled_schema.schemas,
-                        })
-                    }
-                }
-            }
-        }
+        SchemaDataType::Reference(r) => compile_ref(r, components, chain, depth),
         SchemaDataType::ActualType(at) => match &at.type_schema {
             MaybeNullableTypeSchema::Nullable(dt) => {
                 compile_nullable_actual_type(at, &dt.schema, components, chain, depth + 1)
@@ -117,6 +86,59 @@ pub fn compile<'a, 'b>(
             todo!()
         }
         SchemaDataType::UnknownType(_) => todo!(),
+    }
+}
+
+pub fn compile_ref<'a, 'b>(
+    r: &'a Reference,
+    components: Option<&'a Components>,
+    chain: &'b SchemaChain<'a, 'b>,
+    depth: u32,
+) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
+    let schemas_ref = r
+        .sref
+        .schemas_sref()
+        .map_err(Error::ReferenceError)?
+        .ok_or(Error::UnexpecetedReferenceType(&r.sref))?;
+    match schemas_ref {
+        SRefSchemas::Normal(schemas_name) => {
+            if chain.contains(&schemas_name) {
+                // If schema has been already compiled just refer to it
+                Ok(DataTypeWithSchema {
+                    type_or_ref: TypeOrRef::Reference(schemas_name),
+                    schemas: CompiledSchemas::default(),
+                })
+            } else {
+                // If schema has not been compiled:
+                let schema = components
+                    .ok_or(Error::SchemasNotDefinedButReferenced)?
+                    .find_schema_by_name(&schemas_name)
+                    .ok_or(Error::SchemaRefernceNotFound(schemas_name.clone()))?;
+                let compiled_schema = compile(schema, components, chain, depth + 1)
+                    .map_err(|err| Error::SchemaCompilation(schemas_name.clone(), Box::new(err)))?;
+                match compiled_schema.type_or_ref {
+                    TypeOrRef::ActualType(dt) => Ok(DataTypeWithSchema {
+                        type_or_ref: TypeOrRef::Reference(schemas_name.clone()),
+                        schemas: indexmap! {
+                            schemas_name => dt
+                        },
+                    }),
+                    TypeOrRef::Reference(sref) => {
+                        // reference to reference. In this case we just
+                        // follow further reference
+                        Ok(DataTypeWithSchema {
+                            type_or_ref: TypeOrRef::Reference(sref),
+                            schemas: compiled_schema.schemas,
+                        })
+                    }
+                }
+            }
+        }
+        SRefSchemas::ObjProperty((schemas_name, pname)) => {
+            // Rare: reference directly to property
+            println!("property {pname:?} of {schemas_name:?}");
+            todo!()
+        }
     }
 }
 
@@ -150,9 +172,7 @@ pub fn compile_nullable_actual_type<'a, 'b>(
         NullableTypeSchema::Object(v) => {
             compile_nullable_object(v, components, parent_chain, depth)?
         }
-        NullableTypeSchema::Array(_) => {
-            todo!()
-        }
+        NullableTypeSchema::Array(v) => compile_nullable_array(v, components, parent_chain, depth)?,
     })
 }
 
@@ -227,6 +247,42 @@ pub fn compile_nullable_object<'a, 'b>(
         schemas,
         type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Nullable(NullableCompiledType::Object(obj)),
+            readonly: false,
+            writeonly: false,
+        })),
+    })
+}
+
+fn compile_array<'a, 'b>(
+    sarr: &'a SchemaArray,
+    components: Option<&'a Components>,
+    parent_chain: &'b SchemaChain<'a, 'b>,
+    depth: u32,
+) -> Result<(CompiledArray<'a>, CompiledSchemas<'a>), Error<'a>> {
+    let mut chain = SchemaChain::new(parent_chain);
+    let sitems = sarr.items.as_ref().ok_or(Error::NoItemsInArray)?;
+    let cresult = compile(sitems, components, &chain, depth + 1)
+        .map_err(|err| Error::ArrayItemCompilation(Box::new(err)))?;
+    chain.merge(cresult.schemas);
+    Ok((
+        CompiledArray {
+            items: Box::new(cresult.type_or_ref),
+        },
+        chain.done(),
+    ))
+}
+
+pub fn compile_nullable_array<'a, 'b>(
+    sarr: &'a SchemaArray,
+    components: Option<&'a Components>,
+    parent_chain: &'b SchemaChain<'a, 'b>,
+    depth: u32,
+) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
+    let (arr, schemas) = compile_array(sarr, components, parent_chain, depth)?;
+    Ok(DataTypeWithSchema {
+        schemas,
+        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+            compiled_type: CompiledType::Nullable(NullableCompiledType::Array(arr)),
             readonly: false,
             writeonly: false,
         })),

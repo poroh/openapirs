@@ -3,6 +3,7 @@
 // Schema reference ($ref)
 //
 
+use crate::schema::PropertyName;
 use crate::typing::TaggedString;
 use serde::de;
 use serde::de::Visitor;
@@ -18,7 +19,16 @@ pub enum SRefParameterTag {}
 pub type SRefRequestBody = TaggedString<SRefRequestBodyTag>;
 pub enum SRefRequestBodyTag {}
 
-pub type SRefSchemas = TaggedString<SRefSchemasTag>;
+pub type SRefSchemasObjectName = TaggedString<SRefSchemasObjectNameTag>;
+pub enum SRefSchemasObjectNameTag {}
+
+#[derive(Debug, Clone)]
+pub enum SRefSchemas {
+    // Normal reference
+    Normal(SRefSchemasObjectName),
+    ObjProperty((SRefSchemasObjectName, PropertyName)),
+}
+
 pub enum SRefSchemasTag {}
 
 const PARAMETERS_PREFIX: &str = "#/components/parameters/";
@@ -46,13 +56,11 @@ impl SRef {
         }
     }
 
-    pub fn schemas_sref(&self) -> Option<SRefSchemas> {
+    pub fn schemas_sref(&self) -> Result<Option<SRefSchemas>, Error> {
         if self.0.starts_with(SCHEMAS_PREFIX) {
-            Some(SRefSchemas::new(
-                self.0.as_str()[SCHEMAS_PREFIX.len()..].into(),
-            ))
+            Ok(Some(self.0.as_str()[SCHEMAS_PREFIX.len()..].parse()?))
         } else {
-            None
+            Ok(None)
         }
     }
 }
@@ -66,6 +74,7 @@ impl std::fmt::Display for SRef {
 #[derive(Debug)]
 pub enum Error {
     URIReferenceError(uriparse::URIReferenceError),
+    SRefSchemaParseError(String),
 }
 
 impl std::str::FromStr for SRef {
@@ -108,6 +117,39 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::URIReferenceError(err) => write!(f, "uri reference error: {err}"),
+            Self::SRefSchemaParseError(err) => write!(f, "reference parse error: {err}"),
+        }
+    }
+}
+
+impl std::str::FromStr for SRefSchemas {
+    type Err = Error;
+    fn from_str(s: &str) -> Result<SRefSchemas, Self::Err> {
+        let mut split = s.split("/");
+        let objname = SRefSchemasObjectName::new(
+            split
+                .next()
+                .ok_or(Error::SRefSchemaParseError(format!("empty name: {s}")))?
+                .into(),
+        );
+        if let Some(v) = split.next() {
+            if v == "properties" {
+                let propery_name = PropertyName::new(
+                    split
+                        .next()
+                        .ok_or(Error::SRefSchemaParseError(format!(
+                            "empty property name: {s}"
+                        )))?
+                        .into(),
+                );
+                Ok(SRefSchemas::ObjProperty((objname, propery_name)))
+            } else {
+                Err(Error::SRefSchemaParseError(format!(
+                    "unexpected token: {v}"
+                )))
+            }
+        } else {
+            Ok(SRefSchemas::Normal(objname))
         }
     }
 }

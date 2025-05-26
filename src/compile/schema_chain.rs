@@ -9,9 +9,9 @@
 //
 
 use crate::compile::data_type::DataType;
-use crate::schema::sref::SRefSchemas;
+use crate::schema::sref::SRefSchemasObjectName;
 
-pub type CompiledSchemas<'a> = indexmap::IndexMap<SRefSchemas, DataType<'a>>;
+pub type CompiledSchemas<'a> = indexmap::IndexMap<SRefSchemasObjectName, DataType<'a>>;
 
 // Lifetime 'a is lifetime of parsed schema object.
 // Lifetime 'b is lifetime of schemas.
@@ -29,7 +29,7 @@ impl<'a, 'b> SchemaChain<'a, 'b> {
         }
     }
 
-    pub fn contains(&self, v: &SRefSchemas) -> bool {
+    pub fn contains(&self, v: &SRefSchemasObjectName) -> bool {
         self.current.contains_key(v) || self.parent.map(|p| p.contains(v)).unwrap_or(false)
     }
 

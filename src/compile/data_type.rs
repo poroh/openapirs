@@ -10,7 +10,7 @@ use crate::schema::data_type::numerical;
 use crate::schema::data_type::BooleanType;
 use crate::schema::data_type::StringType;
 use crate::schema::PropertyName;
-use crate::schema::sref::SRefSchemas;
+use crate::schema::sref::SRefSchemasObjectName;
 
 #[derive(Debug)]
 pub enum DataType<'a> {
@@ -25,7 +25,7 @@ pub enum DataType<'a> {
 #[derive(Debug)]
 pub enum TypeOrRef<'a> {
     ActualType(DataType<'a>),
-    Reference(SRefSchemas),
+    Reference(SRefSchemasObjectName),
 }
 
 #[derive(Debug)]
