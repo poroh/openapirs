@@ -5,8 +5,8 @@
 //
 
 use crate::schema::header::HeaderOrReference;
-use crate::schema::HeaderName;
 use crate::schema::media_type::MediaType;
+use crate::schema::HeaderName;
 use crate::typing::TaggedString;
 use serde::Deserialize;
 

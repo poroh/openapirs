@@ -30,7 +30,9 @@ fn main() -> Result<(), Error> {
         serde_yaml::from_str(&contents).map_err(Error::SerdeYml)?;
     let result = compile::compile(&spec).map_err(|err| Error::Compile(format!("{err:?}")))?;
     for (name, schema) in result.schemas.iter() {
-        println!("================================================================================");
+        println!(
+            "================================================================================"
+        );
         println!("Schema: {name:?}:");
         println!("{schema:?}");
     }

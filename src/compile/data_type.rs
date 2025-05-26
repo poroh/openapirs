@@ -9,8 +9,8 @@ use crate::schema::data_type::default::NullableDefault;
 use crate::schema::data_type::numerical;
 use crate::schema::data_type::BooleanType;
 use crate::schema::data_type::StringType;
-use crate::schema::PropertyName;
 use crate::schema::sref::SRefSchemasObjectName;
+use crate::schema::PropertyName;
 
 #[derive(Debug)]
 pub enum DataType<'a> {
