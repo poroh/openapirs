@@ -3,27 +3,26 @@
 // Compiler of opeanpirs schema
 //
 
-
-use crate::compile::data_type::CompiledObject;
-use crate::compile::data_type::TypeOrRef;
 use crate::compile::data_type::ActualType;
-use crate::compile::data_type::DataType;
+use crate::compile::data_type::CompiledObject;
 use crate::compile::data_type::CompiledType;
+use crate::compile::data_type::DataType;
 use crate::compile::data_type::NormalCompiledType;
 use crate::compile::data_type::NullableCompiledType;
-use crate::compile::schema_chain::SchemaChain;
+use crate::compile::data_type::TypeOrRef;
 use crate::compile::schema_chain::CompiledSchemas;
-use crate::schema::PropertyName;
+use crate::compile::schema_chain::SchemaChain;
 use crate::schema::components::Components;
-use crate::schema::data_type::TypeSchema;
-use crate::schema::data_type::NullableTypeSchema;
-use crate::schema::data_type::ActualType as SchemaActualType;
 use crate::schema::data_type::object::Object as SchemaObject;
+use crate::schema::data_type::ActualType as SchemaActualType;
 use crate::schema::data_type::DataType as SchemaDataType;
 use crate::schema::data_type::MaybeNullableTypeSchema;
+use crate::schema::data_type::NullableTypeSchema;
+use crate::schema::data_type::TypeSchema;
 use crate::schema::request_body::RequestBody as SchemaRequestBody;
 use crate::schema::sref::SRef;
 use crate::schema::sref::SRefSchemas;
+use crate::schema::PropertyName;
 use indexmap::indexmap;
 
 const MAX_DEPTH: u32 = 1024;
@@ -80,9 +79,7 @@ pub fn compile<'a, 'b>(
                     .get(&schemas_ref)
                     .ok_or(Error::SchemaRefernceNotFound(schemas_ref.clone()))?;
                 let compiled_schema = compile(schema, components, chain, depth + 1)
-                    .map_err(|err| {
-                        Error::SchemaCompilation(schemas_ref.clone(), Box::new(err))
-                    })?;
+                    .map_err(|err| Error::SchemaCompilation(schemas_ref.clone(), Box::new(err)))?;
                 match compiled_schema.type_or_ref {
                     TypeOrRef::ActualType(dt) => Ok(DataTypeWithSchema {
                         type_or_ref: TypeOrRef::Reference(schemas_ref.clone()),
@@ -99,18 +96,15 @@ pub fn compile<'a, 'b>(
                         })
                     }
                 }
-
             }
         }
         SchemaDataType::ActualType(at) => match &at.type_schema {
             MaybeNullableTypeSchema::Nullable(dt) => {
-                compile_nullable_actual_type(at, &dt.schema)
+                compile_nullable_actual_type(at, &dt.schema, components, chain, depth + 1)
             }
-            MaybeNullableTypeSchema::Normal(dt) => {
-                compile_normal_actual_type(at, dt)
-            }
+            MaybeNullableTypeSchema::Normal(dt) => compile_normal_actual_type(at, dt),
             MaybeNullableTypeSchema::Object(obj) => {
-                compile_object(obj, components, chain, depth + 1)
+                compile_normal_object(obj, components, chain, depth + 1)
             }
             MaybeNullableTypeSchema::Array(_) => {
                 todo!()
@@ -126,40 +120,46 @@ pub fn compile<'a, 'b>(
     }
 }
 
-pub fn compile_nullable_actual_type<'a>(at: &'a SchemaActualType, dt: &'a NullableTypeSchema) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
-    Ok(DataTypeWithSchema {
-        schemas: CompiledSchemas::default(),
-        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
-            readonly: at.readonly,
-            writeonly: at.writeonly,
-            compiled_type: match dt {
-                NullableTypeSchema::Null => {
-                    todo!()
-                }
-                NullableTypeSchema::Boolean(v) => {
-                    CompiledType::Nullable(NullableCompiledType::Boolean(v))
-                }
-                NullableTypeSchema::Integer(v) => {
-                    CompiledType::Nullable(NullableCompiledType::Integer(v))
-                }
-                NullableTypeSchema::String(v) => {
-                    CompiledType::Nullable(NullableCompiledType::String(v))
-                }
-                NullableTypeSchema::Number(v) => {
-                    CompiledType::Nullable(NullableCompiledType::Number(v))
-                }
-                NullableTypeSchema::Object(_) => {
-                    todo!()
-                }
-                NullableTypeSchema::Array(_) => {
-                    todo!()
-                }
-            }
-        }))
+pub fn compile_nullable_actual_type<'a, 'b>(
+    at: &'a SchemaActualType,
+    dt: &'a NullableTypeSchema,
+    components: Option<&'a Components>,
+    parent_chain: &'b SchemaChain<'a, 'b>,
+    depth: u32,
+) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
+    Ok(match dt {
+        NullableTypeSchema::Null => {
+            todo!()
+        }
+        NullableTypeSchema::Boolean(v) => DataTypeWithSchema::actual_type(
+            at,
+            CompiledType::Nullable(NullableCompiledType::Boolean(v)),
+        ),
+        NullableTypeSchema::Integer(v) => DataTypeWithSchema::actual_type(
+            at,
+            CompiledType::Nullable(NullableCompiledType::Integer(v)),
+        ),
+        NullableTypeSchema::String(v) => DataTypeWithSchema::actual_type(
+            at,
+            CompiledType::Nullable(NullableCompiledType::String(v)),
+        ),
+        NullableTypeSchema::Number(v) => DataTypeWithSchema::actual_type(
+            at,
+            CompiledType::Nullable(NullableCompiledType::Number(v)),
+        ),
+        NullableTypeSchema::Object(v) => {
+            compile_nullable_object(v, components, parent_chain, depth)?
+        }
+        NullableTypeSchema::Array(_) => {
+            todo!()
+        }
     })
 }
 
-pub fn compile_normal_actual_type<'a>(at: &'a SchemaActualType, dt: &'a TypeSchema) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
+pub fn compile_normal_actual_type<'a>(
+    at: &'a SchemaActualType,
+    dt: &'a TypeSchema,
+) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     Ok(DataTypeWithSchema {
         schemas: CompiledSchemas::default(),
         type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
@@ -169,47 +169,67 @@ pub fn compile_normal_actual_type<'a>(at: &'a SchemaActualType, dt: &'a TypeSche
                 TypeSchema::Null => {
                     todo!()
                 }
-                TypeSchema::Boolean(v) => {
-                    CompiledType::Normal(NormalCompiledType::Boolean(v))
-                }
-                TypeSchema::Integer(v) => {
-                    CompiledType::Normal(NormalCompiledType::Integer(v))
-                }
-                TypeSchema::String(v) => {
-                    CompiledType::Normal(NormalCompiledType::String(v))
-                }
-                TypeSchema::Number(v) => {
-                    CompiledType::Normal(NormalCompiledType::Number(v))
-                }
-            }
-        }))
+                TypeSchema::Boolean(v) => CompiledType::Normal(NormalCompiledType::Boolean(v)),
+                TypeSchema::Integer(v) => CompiledType::Normal(NormalCompiledType::Integer(v)),
+                TypeSchema::String(v) => CompiledType::Normal(NormalCompiledType::String(v)),
+                TypeSchema::Number(v) => CompiledType::Normal(NormalCompiledType::Number(v)),
+            },
+        })),
     })
 }
 
-pub fn compile_object<'a, 'b>(
+fn compile_object<'a, 'b>(
+    sobj: &'a SchemaObject,
+    components: Option<&'a Components>,
+    parent_chain: &'b SchemaChain<'a, 'b>,
+    depth: u32,
+) -> Result<(CompiledObject<'a>, CompiledSchemas<'a>), Error<'a>> {
+    let mut result = CompiledObject::default();
+    let mut chain = SchemaChain::new(parent_chain);
+    if let Some(properties) = sobj.properties.as_ref() {
+        for (propname, sprop) in properties.iter() {
+            let cresult = compile(sprop, components, &chain, depth + 1)
+                .map_err(|err| Error::PropertyCompilation(propname, Box::new(err)))?;
+            chain.merge(cresult.schemas);
+            result
+                .properties
+                .insert(propname.clone(), cresult.type_or_ref);
+        }
+    }
+    Ok((result, chain.done()))
+}
+
+pub fn compile_normal_object<'a, 'b>(
     sobj: &'a SchemaObject,
     components: Option<&'a Components>,
     parent_chain: &'b SchemaChain<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
-    let mut result = CompiledObject::default();
-    let mut chain = SchemaChain::new(parent_chain);
-    if let Some(properties) = sobj.properties.as_ref() { 
-        for (propname, sprop) in properties.iter() {
-            let cresult = compile(sprop, components, &chain, depth + 1).map_err(|err| {
-                Error::PropertyCompilation(propname, Box::new(err))
-            })?;
-            chain.merge(cresult.schemas);
-            result.properties.insert(propname.clone(), cresult.type_or_ref);
-        }
-    }
+    let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
-        schemas: chain.done(),
+        schemas,
         type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
-            compiled_type: CompiledType::Normal(NormalCompiledType::Object(result)),
+            compiled_type: CompiledType::Normal(NormalCompiledType::Object(obj)),
             readonly: false,
             writeonly: false,
-        }))
+        })),
+    })
+}
+
+pub fn compile_nullable_object<'a, 'b>(
+    sobj: &'a SchemaObject,
+    components: Option<&'a Components>,
+    parent_chain: &'b SchemaChain<'a, 'b>,
+    depth: u32,
+) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
+    let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
+    Ok(DataTypeWithSchema {
+        schemas,
+        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+            compiled_type: CompiledType::Nullable(NullableCompiledType::Object(obj)),
+            readonly: false,
+            writeonly: false,
+        })),
     })
 }
 
@@ -217,4 +237,17 @@ pub fn compile_object<'a, 'b>(
 pub struct DataTypeWithSchema<'a> {
     pub schemas: CompiledSchemas<'a>,
     pub type_or_ref: TypeOrRef<'a>,
+}
+
+impl<'a> DataTypeWithSchema<'a> {
+    pub fn actual_type(at: &'a SchemaActualType, compiled_type: CompiledType<'a>) -> Self {
+        Self {
+            schemas: CompiledSchemas::default(),
+            type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+                readonly: at.readonly,
+                writeonly: at.writeonly,
+                compiled_type,
+            })),
+        }
+    }
 }

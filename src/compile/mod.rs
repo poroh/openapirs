@@ -11,8 +11,9 @@ pub mod compiler;
 pub mod data_type;
 pub mod schema_chain;
 
-use crate::schema;
+use crate::compile::data_type::TypeOrRef;
 use crate::compile::schema_chain::SchemaChain;
+use crate::schema;
 use crate::schema::components::Components;
 use crate::schema::parameter;
 use crate::schema::parameter::Parameter as SchemaParameter;
@@ -24,12 +25,14 @@ use crate::schema::path_item::PathItem;
 use crate::schema::reference::Reference;
 use crate::schema::request_body::RequestBody as SchemaRequestBody;
 use crate::schema::request_body::RequestBodyOrReference;
-use compiler::DataTypeWithSchema;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::compile::schema_chain::CompiledSchemas;
+
 #[derive(Debug)]
 pub struct Compiled<'a> {
+    pub schemas: CompiledSchemas<'a>,
     pub operations: Vec<Operation<'a>>,
 }
 
@@ -40,8 +43,7 @@ pub struct Parameter<'a> {
 
 #[derive(Debug)]
 pub struct RequestBody<'a> {
-    pub schema_body: &'a SchemaRequestBody,
-    pub compiled: Option<DataTypeWithSchema<'a>>,
+    pub type_or_ref: Option<TypeOrRef<'a>>,
 }
 
 #[derive(Debug)]
@@ -68,6 +70,7 @@ pub enum Error<'a> {
 type CResult<'a, T> = Result<T, Error<'a>>;
 
 pub fn compile(d: &schema::Description) -> CResult<Compiled> {
+    let mut schema_chain = SchemaChain::default();
     let operations = d
         .paths
         .as_ref()
@@ -82,8 +85,11 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
                                 item,
                                 op,
                                 components: &d.components,
+                                schema_chain: &schema_chain,
                             };
-                            cdata.compile_operation(op_type)
+                            let (op, schemas) = cdata.compile_operation(op_type)?;
+                            schema_chain.merge(schemas);
+                            Ok(op)
                         })
                         .collect::<Result<Vec<_>, _>>()
                 })
@@ -93,17 +99,21 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
                 .collect())
         })
         .unwrap_or(Ok(vec![]))?;
-    Ok(Compiled { operations })
+    Ok(Compiled {
+        schemas: schema_chain.done(),
+        operations,
+    })
 }
 
-struct OpCompileData<'a> {
+struct OpCompileData<'a, 'b> {
     path: &'a Path,
     item: &'a PathItem,
     op: &'a schema::operation::Operation,
     components: &'a Option<Components>,
+    schema_chain: &'b SchemaChain<'a, 'b>,
 }
 
-impl<'a> OpCompileData<'a> {
+impl<'a, 'b> OpCompileData<'a, 'b> {
     fn find_param_by_ref(&self, r: &Reference) -> Option<&'a SchemaParameter> {
         r.sref.parameter_sref().as_ref().and_then(|sref| {
             self.components
@@ -143,7 +153,11 @@ impl<'a> OpCompileData<'a> {
             .or_else(|| self.item.parameters.as_ref().and_then(find_param))
     }
 
-    fn compile_operation(&self, op_type: OperationType) -> Result<Operation<'a>, Error<'a>> {
+    fn compile_operation(
+        &self,
+        op_type: OperationType,
+    ) -> Result<(Operation<'a>, CompiledSchemas<'a>), Error<'a>> {
+        let mut chain = SchemaChain::new(self.schema_chain);
         let path_params = self
             .path
             .path_params_iter()
@@ -173,25 +187,33 @@ impl<'a> OpCompileData<'a> {
             })
             .transpose()?
             .map(|schema_body| {
-                let chain = SchemaChain::default();
-                let compiled = compiler::compile_body_json(schema_body, self.components.as_ref(), &chain)
-                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?;
                 Ok(RequestBody {
-                    schema_body,
-                    compiled,
+                    type_or_ref: compiler::compile_body_json(
+                        schema_body,
+                        self.components.as_ref(),
+                        &chain,
+                    )
+                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
+                    .map(|v| {
+                        chain.merge(v.schemas);
+                        v.type_or_ref
+                    }),
                 })
             })
             .transpose()?;
 
-        Ok(Operation {
-            op_type,
-            path: self.path,
-            path_params,
-            query_params: self.compile_params_by_group(is_query_param)?,
-            header_params: self.compile_params_by_group(is_header_param)?,
-            cookie_params: self.compile_params_by_group(is_cookie_param)?,
-            request_body,
-        })
+        Ok((
+            Operation {
+                op_type,
+                path: self.path,
+                path_params,
+                query_params: self.compile_params_by_group(is_query_param)?,
+                header_params: self.compile_params_by_group(is_header_param)?,
+                cookie_params: self.compile_params_by_group(is_cookie_param)?,
+                request_body,
+            },
+            chain.done(),
+        ))
     }
 
     fn compile_params_by_group(
