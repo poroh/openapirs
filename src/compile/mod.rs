@@ -47,6 +47,11 @@ pub struct RequestBody<'a> {
 }
 
 #[derive(Debug)]
+pub struct Responses {
+    // pub default: HttpStatusCode,
+}
+
+#[derive(Debug)]
 pub struct Operation<'a> {
     pub op_type: OperationType,
     pub path: &'a Path,
@@ -55,6 +60,7 @@ pub struct Operation<'a> {
     pub header_params: Vec<Parameter<'a>>,
     pub cookie_params: Vec<Parameter<'a>>,
     pub request_body: Option<RequestBody<'a>>,
+    pub responses: Option<Responses>,
 }
 
 #[derive(Debug)]
@@ -202,6 +208,16 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             })
             .transpose()?;
 
+        let responses = self
+            .op
+            .responses
+            .as_ref()
+            .map(|resps| {
+                println!("{resps:?}");
+                todo!()
+            })
+            .transpose()?;
+
         Ok((
             Operation {
                 op_type,
@@ -211,6 +227,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                 header_params: self.compile_params_by_group(is_header_param)?,
                 cookie_params: self.compile_params_by_group(is_cookie_param)?,
                 request_body,
+                responses,
             },
             chain.done(),
         ))

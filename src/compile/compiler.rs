@@ -42,6 +42,9 @@ pub enum Error<'a> {
     MaxDepthReached(u32),
     NoItemsInArray,
     ArrayItemCompilation(Box<Error<'a>>),
+    ReferenceToUncompatibleObject(SRefSchemas),
+    PropertiesNotFoundInReferencedObject(SRefSchemasObjectName),
+    PropertyNotFoundInReferencedObject((SRefSchemasObjectName, PropertyName)),
 }
 
 pub fn compile_body_json<'a, 'b>(
@@ -117,7 +120,7 @@ pub fn compile_ref<'a, 'b>(
                 let compiled_schema = compile(schema, components, chain, depth + 1)
                     .map_err(|err| Error::SchemaCompilation(schemas_name.clone(), Box::new(err)))?;
                 match compiled_schema.type_or_ref {
-                    TypeOrRef::ActualType(dt) => Ok(DataTypeWithSchema {
+                    TypeOrRef::DataType(dt) => Ok(DataTypeWithSchema {
                         type_or_ref: TypeOrRef::Reference(schemas_name.clone()),
                         schemas: indexmap! {
                             schemas_name => dt
@@ -134,10 +137,45 @@ pub fn compile_ref<'a, 'b>(
                 }
             }
         }
-        SRefSchemas::ObjProperty((schemas_name, pname)) => {
+        SRefSchemas::ObjProperty((ref schemas_name, ref pname)) => {
             // Rare: reference directly to property
-            println!("property {pname:?} of {schemas_name:?}");
-            todo!()
+            let schema = components
+                .ok_or(Error::SchemasNotDefinedButReferenced)?
+                .find_schema_by_name(schemas_name)
+                .ok_or(Error::SchemaRefernceNotFound(schemas_name.clone()))?;
+            match schema {
+                SchemaDataType::ActualType(at) => {
+                    let obj = match at.type_schema {
+                        MaybeNullableTypeSchema::Nullable(ref dt) => match dt.schema {
+                            NullableTypeSchema::Object(ref obj) => Ok(obj),
+                            _ => Err(Error::ReferenceToUncompatibleObject(schemas_ref.clone())),
+                        },
+                        MaybeNullableTypeSchema::Normal(_) => {
+                            Err(Error::ReferenceToUncompatibleObject(schemas_ref.clone()))
+                        }
+                        MaybeNullableTypeSchema::Object(ref obj) => Ok(obj),
+                        MaybeNullableTypeSchema::Array(_) => {
+                            Err(Error::ReferenceToUncompatibleObject(schemas_ref.clone()))
+                        }
+                    }?;
+                    let dt = obj
+                        .properties
+                        .as_ref()
+                        .ok_or(Error::PropertiesNotFoundInReferencedObject(
+                            schemas_name.clone(),
+                        ))
+                        .and_then(|properties| {
+                            properties
+                                .get(pname)
+                                .ok_or(Error::PropertyNotFoundInReferencedObject((
+                                    schemas_name.clone(),
+                                    pname.clone(),
+                                )))
+                        })?;
+                    compile(dt, components, chain, depth + 1)
+                }
+                _ => Err(Error::ReferenceToUncompatibleObject(schemas_ref)),
+            }
         }
     }
 }
@@ -182,7 +220,7 @@ pub fn compile_normal_actual_type<'a>(
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     Ok(DataTypeWithSchema {
         schemas: CompiledSchemas::default(),
-        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
             readonly: at.readonly,
             writeonly: at.writeonly,
             compiled_type: match dt {
@@ -228,7 +266,7 @@ pub fn compile_normal_object<'a, 'b>(
     let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
-        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Normal(NormalCompiledType::Object(obj)),
             readonly: false,
             writeonly: false,
@@ -245,7 +283,7 @@ pub fn compile_nullable_object<'a, 'b>(
     let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
-        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Nullable(NullableCompiledType::Object(obj)),
             readonly: false,
             writeonly: false,
@@ -281,7 +319,7 @@ pub fn compile_nullable_array<'a, 'b>(
     let (arr, schemas) = compile_array(sarr, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
-        type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Nullable(NullableCompiledType::Array(arr)),
             readonly: false,
             writeonly: false,
@@ -299,7 +337,7 @@ impl<'a> DataTypeWithSchema<'a> {
     pub fn actual_type(at: &'a SchemaActualType, compiled_type: CompiledType<'a>) -> Self {
         Self {
             schemas: CompiledSchemas::default(),
-            type_or_ref: TypeOrRef::ActualType(DataType::ActualType(ActualType {
+            type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
                 readonly: at.readonly,
                 writeonly: at.writeonly,
                 compiled_type,

@@ -24,7 +24,7 @@ pub enum DataType<'a> {
 // DataTypes or just reference to schema datatype.
 #[derive(Debug)]
 pub enum TypeOrRef<'a> {
-    ActualType(DataType<'a>),
+    DataType(DataType<'a>),
     Reference(SRefSchemasObjectName),
 }
 
