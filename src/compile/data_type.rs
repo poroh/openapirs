@@ -1,17 +1,16 @@
 // SPDX-License-Identifier: MIT
 //
 // Compiled data type
+// with all required schemas with it.
 //
 
-use crate::schema::components::Components;
 use crate::schema::data_type::default::NonNullableDefault;
 use crate::schema::data_type::default::NullableDefault;
 use crate::schema::data_type::numerical;
 use crate::schema::data_type::BooleanType;
-use crate::schema::data_type::DataType as SchemaDataType;
 use crate::schema::data_type::StringType;
-use crate::schema::request_body::RequestBody as SchemaRequestBody;
 use crate::schema::PropertyName;
+use crate::schema::sref::SRefSchemas;
 
 #[derive(Debug)]
 pub enum DataType<'a> {
@@ -21,49 +20,12 @@ pub enum DataType<'a> {
     AnyOf(AnyOfType<'a>),
 }
 
-impl<'a> DataType<'a> {
-    pub fn resolve_body_json(
-        body: &'a SchemaRequestBody,
-        components: Option<&'a Components>,
-    ) -> Result<Option<ResolveResult<'a>>, super::Error<'a>> {
-        body.content
-            .get("application/json")
-            .and_then(|json| json.schema.as_ref())
-            .map(|json_schema| Self::resolve(json_schema, components))
-            .transpose()
-    }
-
-    pub fn resolve(
-        schema_dt: &'a SchemaDataType,
-        components: Option<&'a Components>,
-    ) -> Result<ResolveResult<'a>, super::Error<'a>> {
-        todo!()
-
-        // match schema_dt {
-        //     SchemaDataType::Reference(r) => {
-        //         println!("{:?}", r);
-        //         Ok(todo!())
-        //     }
-        //     SchemaDataType::ActualType(t) => Ok(DataType::ActualType(ActualType {
-        //         compiled_type: todo!(),
-        //         readonly: todo!(),
-        //         writeonly: todo!(),
-        //     })),
-        //     SchemaDataType::OneOf(t) => Ok(DataType::OneOf(OneOfType { one_of: todo!() })),
-        //     SchemaDataType::AllOf(AllOfType) => Ok(DataType::AllOf(AllOfType { all_of: todo!() })),
-        //     SchemaDataType::AnyOf(AnyOfType) => Ok(DataType::AnyOf(AnyOfType { any_of: todo!() })),
-        //     SchemaDataType::Empty(EmptyType) => {
-        //         todo!()
-        //     }
-        //     SchemaDataType::UnknownType(UnknownType) => Err(super::Error::UnknownBodyType(path)),
-        // }
-    }
-}
-
+// Resolve can be either DataType that refers to one or more other
+// DataTypes or just reference to schema datatype.
 #[derive(Debug)]
-pub struct ResolveResult<'a> {
-    pub data_type: DataType<'a>,
-    pub schema_name: Option<&'a String>,
+pub enum TypeOrRef<'a> {
+    ActualType(DataType<'a>),
+    Reference(SRefSchemas),
 }
 
 #[derive(Debug)]
@@ -89,7 +51,7 @@ pub struct ActualType<'a> {
 }
 
 #[derive(Debug)]
-enum CompiledType<'a> {
+pub enum CompiledType<'a> {
     Nullable(NullableCompiledType<'a>),
     Normal(NormalCompiledType<'a>),
 }
@@ -115,9 +77,9 @@ pub enum NormalCompiledType<'a> {
     String(&'a StringType<NonNullableDefault<String>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct CompiledObject<'a> {
-    pub properties: indexmap::IndexMap<PropertyName, DataType<'a>>,
+    pub properties: indexmap::IndexMap<PropertyName, TypeOrRef<'a>>,
 }
 
 #[derive(Debug)]
@@ -128,5 +90,5 @@ pub enum CompiledAdditionalProperties<'a> {
 
 #[derive(Debug)]
 pub struct CompiledArray<'a> {
-    pub properties: indexmap::IndexMap<PropertyName, DataType<'a>>,
+    pub items: Box<TypeOrRef<'a>>,
 }

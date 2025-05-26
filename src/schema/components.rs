@@ -13,12 +13,13 @@ use crate::schema::request_body::RequestBodyOrReference;
 use crate::schema::responses::ResponseOrReference;
 use crate::schema::sref::SRefParameter;
 use crate::schema::sref::SRefRequestBody;
+use crate::schema::sref::SRefSchemas;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct Components {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub schemas: Option<indexmap::IndexMap<String, DataType>>,
+    pub schemas: Option<indexmap::IndexMap<SRefSchemas, DataType>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub responses: Option<indexmap::IndexMap<String, ResponseOrReference>>,
     #[serde(skip_serializing_if = "Option::is_none")]

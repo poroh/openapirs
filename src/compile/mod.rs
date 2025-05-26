@@ -7,10 +7,12 @@
 // operations depends on.
 //
 
+pub mod compiler;
 pub mod data_type;
-pub mod model;
+pub mod schema_chain;
 
 use crate::schema;
+use crate::compile::schema_chain::SchemaChain;
 use crate::schema::components::Components;
 use crate::schema::parameter;
 use crate::schema::parameter::Parameter as SchemaParameter;
@@ -22,7 +24,7 @@ use crate::schema::path_item::PathItem;
 use crate::schema::reference::Reference;
 use crate::schema::request_body::RequestBody as SchemaRequestBody;
 use crate::schema::request_body::RequestBodyOrReference;
-use data_type::DataType;
+use compiler::DataTypeWithSchema;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -39,8 +41,7 @@ pub struct Parameter<'a> {
 #[derive(Debug)]
 pub struct RequestBody<'a> {
     pub schema_body: &'a SchemaRequestBody,
-    pub data_type: Option<DataType<'a>>,
-    pub name: model::Name<'a>,
+    pub compiled: Option<DataTypeWithSchema<'a>>,
 }
 
 #[derive(Debug)]
@@ -61,6 +62,7 @@ pub enum Error<'a> {
     NotDefinedAsPathParameter(&'a Path, parameter::Name),
     WrongParameterReference(&'a Path, &'a Reference),
     WrongBodyReference(&'a Path, &'a Reference),
+    BodyCompilation(&'a Path, OperationType, compiler::Error<'a>),
 }
 
 type CResult<'a, T> = Result<T, Error<'a>>;
@@ -171,19 +173,12 @@ impl<'a> OpCompileData<'a> {
             })
             .transpose()?
             .map(|schema_body| {
-                let rr = DataType::resolve_body_json(schema_body, self.components.as_ref())?;
-                let (data_type, schema_name) = rr
-                    .map(|r| (Some(r.data_type), r.schema_name))
-                    .unwrap_or((None, None));
+                let chain = SchemaChain::default();
+                let compiled = compiler::compile_body_json(schema_body, self.components.as_ref(), &chain)
+                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?;
                 Ok(RequestBody {
                     schema_body,
-                    data_type,
-                    name: schema_name.cloned().map(model::Name::SchemaName).unwrap_or(
-                        model::Name::PathNameRequest(model::PathNameRequest {
-                            op: op_type.clone(),
-                            path: self.path,
-                        }),
-                    ),
+                    compiled,
                 })
             })
             .transpose()?;

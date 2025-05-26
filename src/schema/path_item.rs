@@ -6,14 +6,14 @@
 use crate::schema::operation::Operation;
 use crate::schema::parameter::ParameterOrReference;
 use crate::schema::server::Server;
-use crate::schema::Sref;
+use crate::schema::SRef;
 use crate::typing::TaggedString;
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct PathItem {
     #[serde(rename = "$ref", skip_serializing_if = "Option::is_none")]
-    pub sref: Option<Sref>,
+    pub sref: Option<SRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<Summary>,
     #[serde(skip_serializing_if = "Option::is_none")]

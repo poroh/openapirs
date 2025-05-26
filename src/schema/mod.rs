@@ -28,7 +28,7 @@ pub mod version;
 use crate::typing::TaggedString;
 use serde::Deserialize;
 
-pub type Sref = sref::Sref;
+pub type SRef = sref::SRef;
 
 #[derive(Deserialize, Debug)]
 pub struct Description {

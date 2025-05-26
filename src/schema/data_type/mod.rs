@@ -51,7 +51,7 @@ pub struct ActualType {
 #[derive(Deserialize, Debug)]
 #[serde(untagged)]
 pub enum MaybeNullableTypeSchema {
-    Nullable(NullableTypeSchema),
+    Nullable(NullableTypeSchemaProxy),
     Normal(TypeSchema),
     // For some reasons many specs doesn't add "type: object" and "type: array"
     Object(object::Object),
@@ -59,10 +59,10 @@ pub enum MaybeNullableTypeSchema {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct NullableTypeSchema {
+pub struct NullableTypeSchemaProxy {
     pub nullable: AlwaysTrue,
     #[serde(flatten)]
-    pub schema: NullalbleTypeSchema,
+    pub schema: NullableTypeSchema,
 }
 
 #[derive(Deserialize, Debug)]
@@ -82,7 +82,7 @@ pub enum TypeSchema {
 
 #[derive(Deserialize, Debug)]
 #[serde(tag = "type")]
-pub enum NullalbleTypeSchema {
+pub enum NullableTypeSchema {
     #[serde(rename = "null")]
     Null,
     #[serde(rename = "boolean")]
