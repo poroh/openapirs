@@ -112,10 +112,10 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
                                 schema_chain: &schema_chain,
                                 request_bodies: &request_bodies,
                             };
-                            let (op, schemas, bodies) = cdata.compile_operation(op_type)?;
-                            schema_chain.merge(schemas);
-                            request_bodies.extend(bodies);
-                            Ok(op)
+                            let opr = cdata.compile_operation(op_type)?;
+                            schema_chain.merge(opr.schemas);
+                            request_bodies.extend(opr.request_bodies);
+                            Ok(opr.op)
                         })
                         .collect::<Result<Vec<_>, _>>()
                 })
@@ -173,10 +173,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             .or_else(|| self.item.parameters.as_ref().and_then(find_param))
     }
 
-    fn compile_operation(
-        &self,
-        op_type: OperationType,
-    ) -> Result<(Operation<'a>, CompiledSchemas<'a>, CompiledBodies<'a>), Error<'a>> {
+    fn compile_operation(&self, op_type: OperationType) -> Result<OpCompileResult<'a>, Error<'a>> {
         let mut chain = SchemaChain::new(self.schema_chain);
         let mut request_bodies = CompiledBodies::default();
         let path_params = self
@@ -227,8 +224,8 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
         //     })
         //     .transpose()?;
 
-        Ok((
-            Operation {
+        Ok(OpCompileResult {
+            op: Operation {
                 op_type,
                 path: self.path,
                 path_params,
@@ -237,9 +234,9 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                 cookie_params: self.compile_params_by_group(is_cookie_param)?,
                 request_body_or_ref,
             },
-            chain.done(),
+            schemas: chain.done(),
             request_bodies,
-        ))
+        })
     }
 
     fn compile_params_by_group(
@@ -354,6 +351,12 @@ enum BodyCompileResult<'a> {
     NewBody((SRefRequestBody, RequestBody<'a>, CompiledSchemas<'a>)),
     // Body specified in-place
     DataType((RequestBody<'a>, CompiledSchemas<'a>)),
+}
+
+struct OpCompileResult<'a> {
+    op: Operation<'a>,
+    schemas: CompiledSchemas<'a>,
+    request_bodies: CompiledBodies<'a>,
 }
 
 fn is_query_param(p: &SchemaParameter) -> bool {
