@@ -10,7 +10,7 @@ use crate::compile::data_type::CompiledType;
 use crate::compile::data_type::DataType;
 use crate::compile::data_type::NormalCompiledType;
 use crate::compile::data_type::NullableCompiledType;
-use crate::compile::data_type::TypeOrRef;
+use crate::compile::data_type::TypeOrSchemaRef;
 use crate::compile::schema_chain::CompiledSchemas;
 use crate::compile::schema_chain::SchemaChain;
 use crate::schema::components::Components;
@@ -108,7 +108,7 @@ pub fn compile_ref<'a, 'b>(
             if chain.contains(&schemas_name) {
                 // If schema has been already compiled just refer to it
                 Ok(DataTypeWithSchema {
-                    type_or_ref: TypeOrRef::Reference(schemas_name),
+                    type_or_ref: TypeOrSchemaRef::Reference(schemas_name),
                     schemas: CompiledSchemas::default(),
                 })
             } else {
@@ -120,17 +120,17 @@ pub fn compile_ref<'a, 'b>(
                 let compiled_schema = compile(schema, components, chain, depth + 1)
                     .map_err(|err| Error::SchemaCompilation(schemas_name.clone(), Box::new(err)))?;
                 match compiled_schema.type_or_ref {
-                    TypeOrRef::DataType(dt) => Ok(DataTypeWithSchema {
-                        type_or_ref: TypeOrRef::Reference(schemas_name.clone()),
+                    TypeOrSchemaRef::DataType(dt) => Ok(DataTypeWithSchema {
+                        type_or_ref: TypeOrSchemaRef::Reference(schemas_name.clone()),
                         schemas: indexmap! {
                             schemas_name => dt
                         },
                     }),
-                    TypeOrRef::Reference(sref) => {
+                    TypeOrSchemaRef::Reference(sref) => {
                         // reference to reference. In this case we just
                         // follow further reference
                         Ok(DataTypeWithSchema {
-                            type_or_ref: TypeOrRef::Reference(sref),
+                            type_or_ref: TypeOrSchemaRef::Reference(sref),
                             schemas: compiled_schema.schemas,
                         })
                     }
@@ -220,7 +220,7 @@ pub fn compile_normal_actual_type<'a>(
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     Ok(DataTypeWithSchema {
         schemas: CompiledSchemas::default(),
-        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
             readonly: at.readonly,
             writeonly: at.writeonly,
             compiled_type: match dt {
@@ -266,7 +266,7 @@ pub fn compile_normal_object<'a, 'b>(
     let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
-        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Normal(NormalCompiledType::Object(obj)),
             readonly: false,
             writeonly: false,
@@ -283,7 +283,7 @@ pub fn compile_nullable_object<'a, 'b>(
     let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
-        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Nullable(NullableCompiledType::Object(obj)),
             readonly: false,
             writeonly: false,
@@ -319,7 +319,7 @@ pub fn compile_nullable_array<'a, 'b>(
     let (arr, schemas) = compile_array(sarr, components, parent_chain, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
-        type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
+        type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
             compiled_type: CompiledType::Nullable(NullableCompiledType::Array(arr)),
             readonly: false,
             writeonly: false,
@@ -330,14 +330,14 @@ pub fn compile_nullable_array<'a, 'b>(
 #[derive(Debug)]
 pub struct DataTypeWithSchema<'a> {
     pub schemas: CompiledSchemas<'a>,
-    pub type_or_ref: TypeOrRef<'a>,
+    pub type_or_ref: TypeOrSchemaRef<'a>,
 }
 
 impl<'a> DataTypeWithSchema<'a> {
     pub fn actual_type(at: &'a SchemaActualType, compiled_type: CompiledType<'a>) -> Self {
         Self {
             schemas: CompiledSchemas::default(),
-            type_or_ref: TypeOrRef::DataType(DataType::ActualType(ActualType {
+            type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
                 readonly: at.readonly,
                 writeonly: at.writeonly,
                 compiled_type,

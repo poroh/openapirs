@@ -23,7 +23,7 @@ pub enum DataType<'a> {
 // Resolve can be either DataType that refers to one or more other
 // DataTypes or just reference to schema datatype.
 #[derive(Debug)]
-pub enum TypeOrRef<'a> {
+pub enum TypeOrSchemaRef<'a> {
     DataType(DataType<'a>),
     Reference(SRefSchemasObjectName),
 }
@@ -79,7 +79,7 @@ pub enum NormalCompiledType<'a> {
 
 #[derive(Debug, Default)]
 pub struct CompiledObject<'a> {
-    pub properties: indexmap::IndexMap<PropertyName, TypeOrRef<'a>>,
+    pub properties: indexmap::IndexMap<PropertyName, TypeOrSchemaRef<'a>>,
 }
 
 #[derive(Debug)]
@@ -90,5 +90,5 @@ pub enum CompiledAdditionalProperties<'a> {
 
 #[derive(Debug)]
 pub struct CompiledArray<'a> {
-    pub items: Box<TypeOrRef<'a>>,
+    pub items: Box<TypeOrSchemaRef<'a>>,
 }

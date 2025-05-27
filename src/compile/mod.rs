@@ -11,10 +11,11 @@ pub mod compiler;
 pub mod data_type;
 pub mod schema_chain;
 
-use crate::compile::data_type::TypeOrRef;
+use crate::compile::data_type::TypeOrSchemaRef;
 use crate::compile::schema_chain::SchemaChain;
 use crate::schema;
 use crate::schema::components::Components;
+use crate::schema::http_status_code::HttpStatusCode;
 use crate::schema::parameter;
 use crate::schema::parameter::Parameter as SchemaParameter;
 use crate::schema::parameter::ParameterOrReference;
@@ -23,15 +24,18 @@ use crate::schema::path::PathParseError;
 use crate::schema::path_item::OperationType;
 use crate::schema::path_item::PathItem;
 use crate::schema::reference::Reference;
-use crate::schema::request_body::RequestBody as SchemaRequestBody;
-use crate::schema::request_body::RequestBodyOrReference;
+use crate::schema::request_body::RequestBodyOrReference as SchemaRequestBodyOrReference;
+use crate::schema::sref::SRefRequestBody;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
 use crate::compile::schema_chain::CompiledSchemas;
 
+pub type CompiledBodies<'a> = indexmap::IndexMap<SRefRequestBody, RequestBody<'a>>;
+
 #[derive(Debug)]
 pub struct Compiled<'a> {
+    pub request_bodies: CompiledBodies<'a>,
     pub schemas: CompiledSchemas<'a>,
     pub operations: Vec<Operation<'a>>,
 }
@@ -43,12 +47,24 @@ pub struct Parameter<'a> {
 
 #[derive(Debug)]
 pub struct RequestBody<'a> {
-    pub type_or_ref: Option<TypeOrRef<'a>>,
+    pub json_type_or_ref: Option<TypeOrSchemaRef<'a>>,
 }
 
 #[derive(Debug)]
-pub struct Responses {
-    // pub default: HttpStatusCode,
+pub enum RequestBodyOrReference<'a> {
+    Body(RequestBody<'a>),
+    Reference(SRefRequestBody),
+}
+
+#[derive(Debug)]
+pub struct Responses<'a> {
+    pub default: Option<Response<'a>>,
+    pub codes: indexmap::IndexMap<&'a HttpStatusCode, Response<'a>>,
+}
+
+#[derive(Debug)]
+pub struct Response<'a> {
+    pub json_type_or_ref: Option<TypeOrSchemaRef<'a>>,
 }
 
 #[derive(Debug)]
@@ -59,8 +75,9 @@ pub struct Operation<'a> {
     pub query_params: Vec<Parameter<'a>>,
     pub header_params: Vec<Parameter<'a>>,
     pub cookie_params: Vec<Parameter<'a>>,
-    pub request_body: Option<RequestBody<'a>>,
-    pub responses: Option<Responses>,
+    pub request_body_or_ref: Option<RequestBodyOrReference<'a>>,
+    // TODO:
+    // pub responses: Option<Responses<'a>>,
 }
 
 #[derive(Debug)]
@@ -77,6 +94,7 @@ type CResult<'a, T> = Result<T, Error<'a>>;
 
 pub fn compile(d: &schema::Description) -> CResult<Compiled> {
     let mut schema_chain = SchemaChain::default();
+    let mut request_bodies = CompiledBodies::default();
     let operations = d
         .paths
         .as_ref()
@@ -92,9 +110,11 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
                                 op,
                                 components: &d.components,
                                 schema_chain: &schema_chain,
+                                request_bodies: &request_bodies,
                             };
-                            let (op, schemas) = cdata.compile_operation(op_type)?;
+                            let (op, schemas, bodies) = cdata.compile_operation(op_type)?;
                             schema_chain.merge(schemas);
+                            request_bodies.extend(bodies);
                             Ok(op)
                         })
                         .collect::<Result<Vec<_>, _>>()
@@ -106,6 +126,7 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
         })
         .unwrap_or(Ok(vec![]))?;
     Ok(Compiled {
+        request_bodies,
         schemas: schema_chain.done(),
         operations,
     })
@@ -117,6 +138,7 @@ struct OpCompileData<'a, 'b> {
     op: &'a schema::operation::Operation,
     components: &'a Option<Components>,
     schema_chain: &'b SchemaChain<'a, 'b>,
+    request_bodies: &'b CompiledBodies<'a>,
 }
 
 impl<'a, 'b> OpCompileData<'a, 'b> {
@@ -125,14 +147,6 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             self.components
                 .as_ref()
                 .and_then(|c| c.find_parameter(sref))
-        })
-    }
-
-    fn find_request_body_by_ref(&self, r: &Reference) -> Option<&'a SchemaRequestBody> {
-        r.sref.request_body_sref().as_ref().and_then(|sref| {
-            self.components
-                .as_ref()
-                .and_then(|c| c.find_request_body(sref))
         })
     }
 
@@ -162,8 +176,9 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
     fn compile_operation(
         &self,
         op_type: OperationType,
-    ) -> Result<(Operation<'a>, CompiledSchemas<'a>), Error<'a>> {
+    ) -> Result<(Operation<'a>, CompiledSchemas<'a>, CompiledBodies<'a>), Error<'a>> {
         let mut chain = SchemaChain::new(self.schema_chain);
+        let mut request_bodies = CompiledBodies::default();
         let path_params = self
             .path
             .path_params_iter()
@@ -181,42 +196,36 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
 
-        let request_body = self
+        let body_compile_result = self
             .op
             .request_body
             .as_ref()
-            .map(|v| match v {
-                RequestBodyOrReference::RequestBody(b) => Ok(b),
-                RequestBodyOrReference::Reference(r) => self
-                    .find_request_body_by_ref(r)
-                    .ok_or(Error::WrongBodyReference(self.path, r)),
-            })
-            .transpose()?
-            .map(|schema_body| {
-                Ok(RequestBody {
-                    type_or_ref: compiler::compile_body_json(
-                        schema_body,
-                        self.components.as_ref(),
-                        &chain,
-                    )
-                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                    .map(|v| {
-                        chain.merge(v.schemas);
-                        v.type_or_ref
-                    }),
-                })
-            })
+            .map(|body| self.compile_body(op_type.clone(), body))
             .transpose()?;
 
-        let responses = self
-            .op
-            .responses
-            .as_ref()
-            .map(|resps| {
-                println!("{resps:?}");
-                todo!()
-            })
-            .transpose()?;
+        let request_body_or_ref = body_compile_result.map(|v| match v {
+            BodyCompileResult::ExistingBody(sref) => RequestBodyOrReference::Reference(sref),
+            BodyCompileResult::NewBody((sref, body, schemas)) => {
+                request_bodies.insert(sref.clone(), body);
+                chain.merge(schemas);
+                RequestBodyOrReference::Reference(sref)
+            }
+            BodyCompileResult::DataType((body, schemas)) => {
+                chain.merge(schemas);
+                RequestBodyOrReference::Body(body)
+            }
+        });
+
+        // TODO:
+        // let responses = self
+        //     .op
+        //     .responses
+        //     .as_ref()
+        //     .map(|resps| {
+        //         println!("{resps:?}");
+        //         todo!()
+        //     })
+        //     .transpose()?;
 
         Ok((
             Operation {
@@ -226,10 +235,10 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                 query_params: self.compile_params_by_group(is_query_param)?,
                 header_params: self.compile_params_by_group(is_header_param)?,
                 cookie_params: self.compile_params_by_group(is_cookie_param)?,
-                request_body,
-                responses,
+                request_body_or_ref,
             },
             chain.done(),
+            request_bodies,
         ))
     }
 
@@ -283,6 +292,68 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             .map(|p| Parameter { schema_param: p })
             .collect::<Vec<_>>())
     }
+
+    fn compile_body(
+        &self,
+        op_type: OperationType,
+        sbody: &'a SchemaRequestBodyOrReference,
+    ) -> Result<BodyCompileResult<'a>, Error<'a>> {
+        match sbody {
+            SchemaRequestBodyOrReference::RequestBody(b) => {
+                let mut chain = SchemaChain::new(self.schema_chain);
+                let json_type_or_ref =
+                    compiler::compile_body_json(b, self.components.as_ref(), &chain)
+                        .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
+                        .map(|v| {
+                            chain.merge(v.schemas);
+                            v.type_or_ref
+                        });
+                let request_body = RequestBody { json_type_or_ref };
+                Ok(BodyCompileResult::DataType((request_body, chain.done())))
+            }
+            SchemaRequestBodyOrReference::Reference(r) => {
+                let body_sref = r
+                    .sref
+                    .request_body_sref()
+                    .ok_or(Error::WrongBodyReference(self.path, r))?;
+                if self.request_bodies.contains_key(&body_sref) {
+                    // Already compiled:
+                    Ok(BodyCompileResult::ExistingBody(body_sref))
+                } else {
+                    let mut chain = SchemaChain::new(self.schema_chain);
+                    let components = self
+                        .components
+                        .as_ref()
+                        .ok_or(Error::WrongBodyReference(self.path, r))?;
+                    let body_schema = components
+                        .find_request_body(&body_sref)
+                        .ok_or(Error::WrongBodyReference(self.path, r))?;
+                    let json_type_or_ref =
+                        compiler::compile_body_json(body_schema, self.components.as_ref(), &chain)
+                            .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
+                            .map(|v| {
+                                chain.merge(v.schemas);
+                                v.type_or_ref
+                            });
+                    let request_body = RequestBody { json_type_or_ref };
+                    Ok(BodyCompileResult::NewBody((
+                        body_sref,
+                        request_body,
+                        chain.done(),
+                    )))
+                }
+            }
+        }
+    }
+}
+
+enum BodyCompileResult<'a> {
+    // Body specified as reference and has been alredy compiled
+    ExistingBody(SRefRequestBody),
+    // Body speicified as reference and compiled
+    NewBody((SRefRequestBody, RequestBody<'a>, CompiledSchemas<'a>)),
+    // Body specified in-place
+    DataType((RequestBody<'a>, CompiledSchemas<'a>)),
 }
 
 fn is_query_param(p: &SchemaParameter) -> bool {

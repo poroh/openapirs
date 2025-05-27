@@ -36,6 +36,13 @@ fn main() -> Result<(), Error> {
         println!("Schema: {name:?}:");
         println!("{schema:?}");
     }
+    for (name, body_schema) in result.request_bodies.iter() {
+        println!(
+            "================================================================================"
+        );
+        println!("Requst body: {name:?}:");
+        println!("{body_schema:?}");
+    }
 
     println!("================================================================================");
     for v in result.operations.iter() {

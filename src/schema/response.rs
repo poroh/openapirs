@@ -14,7 +14,8 @@ use serde::Deserialize;
 pub struct Response {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<Description>,
-    pub content: indexmap::IndexMap<String, MediaType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content: Option<indexmap::IndexMap<String, MediaType>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub headers: Option<indexmap::IndexMap<HeaderName, HeaderOrReference>>,
 }
