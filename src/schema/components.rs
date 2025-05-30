@@ -10,9 +10,11 @@ use crate::schema::parameter::Parameter;
 use crate::schema::parameter::ParameterOrReference;
 use crate::schema::request_body::RequestBody;
 use crate::schema::request_body::RequestBodyOrReference;
+use crate::schema::response::Response;
 use crate::schema::responses::ResponseOrReference;
 use crate::schema::sref::SRefParameter;
 use crate::schema::sref::SRefRequestBody;
+use crate::schema::sref::SRefResponsesName;
 use crate::schema::sref::SRefSchemasObjectName;
 use serde::Deserialize;
 
@@ -21,7 +23,7 @@ pub struct Components {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub schemas: Option<indexmap::IndexMap<SRefSchemasObjectName, DataType>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub responses: Option<indexmap::IndexMap<String, ResponseOrReference>>,
+    pub responses: Option<indexmap::IndexMap<SRefResponsesName, ResponseOrReference>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub parameters: Option<indexmap::IndexMap<SRefParameter, ParameterOrReference>>,
     #[serde(rename = "requestBodies", skip_serializing_if = "Option::is_none")]
@@ -76,6 +78,27 @@ impl Components {
                         .sref
                         .request_body_sref()
                         .and_then(|sref| self.do_find_request_body(&sref, depth + 1)),
+                })
+        }
+    }
+
+    pub fn find_response(&self, sref: &SRefResponsesName) -> Option<&Response> {
+        self.do_find_response(sref, 0)
+    }
+
+    fn do_find_response(&self, sref: &SRefResponsesName, depth: u32) -> Option<&Response> {
+        if depth > MAX_DEPTH {
+            None
+        } else {
+            self.responses
+                .as_ref()
+                .and_then(|responses| responses.get(sref))
+                .and_then(|por| match por {
+                    ResponseOrReference::Response(x) => Some(x),
+                    ResponseOrReference::Reference(sref) => sref
+                        .sref
+                        .responses_sref()
+                        .and_then(|sref| self.do_find_response(&sref, depth + 1)),
                 })
         }
     }

@@ -22,6 +22,9 @@ pub enum SRefRequestBodyTag {}
 pub type SRefSchemasObjectName = TaggedString<SRefSchemasObjectNameTag>;
 pub enum SRefSchemasObjectNameTag {}
 
+pub type SRefResponsesName = TaggedString<SRefResponsesNameTag>;
+pub enum SRefResponsesNameTag {}
+
 #[derive(Debug, Clone)]
 pub enum SRefSchemas {
     // Normal reference
@@ -33,6 +36,7 @@ pub enum SRefSchemasTag {}
 
 const PARAMETERS_PREFIX: &str = "#/components/parameters/";
 const REQUEST_BODIES_PREFIX: &str = "#/components/requestBodies/";
+const RESPONSES_PREFIX: &str = "#/components/responses/";
 const SCHEMAS_PREFIX: &str = "#/components/schemas/";
 
 impl SRef {
@@ -50,6 +54,16 @@ impl SRef {
         if self.0.starts_with(REQUEST_BODIES_PREFIX) {
             Some(SRefRequestBody::new(
                 self.0.as_str()[REQUEST_BODIES_PREFIX.len()..].into(),
+            ))
+        } else {
+            None
+        }
+    }
+
+    pub fn responses_sref(&self) -> Option<SRefResponsesName> {
+        if self.0.starts_with(RESPONSES_PREFIX) {
+            Some(SRefResponsesName::new(
+                self.0.as_str()[RESPONSES_PREFIX.len()..].into(),
             ))
         } else {
             None

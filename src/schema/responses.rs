@@ -12,7 +12,7 @@ use serde::Deserialize;
 #[derive(Deserialize, Debug)]
 pub struct Responses {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub default: Option<Response>,
+    pub default: Option<ResponseOrReference>,
     #[serde(flatten)]
     pub codes: indexmap::IndexMap<HttpStatusCode, ResponseOrReference>,
 }

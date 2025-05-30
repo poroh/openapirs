@@ -44,6 +44,14 @@ fn main() -> Result<(), Error> {
         println!("{body_schema:?}");
     }
 
+    for (name, resp_schema) in result.responses.iter() {
+        println!(
+            "================================================================================"
+        );
+        println!("Response: {name:?}:");
+        println!("{resp_schema:?}");
+    }
+
     println!("================================================================================");
     for v in result.operations.iter() {
         println!("{v:?}");

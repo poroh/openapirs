@@ -23,6 +23,7 @@ use crate::schema::data_type::NullableTypeSchema;
 use crate::schema::data_type::TypeSchema;
 use crate::schema::reference::Reference;
 use crate::schema::request_body::RequestBody as SchemaRequestBody;
+use crate::schema::response::Response as SchemaResponse;
 use crate::schema::sref::SRef;
 use crate::schema::sref::SRefSchemas;
 use crate::schema::sref::SRefSchemasObjectName;
@@ -54,6 +55,19 @@ pub fn compile_body_json<'a, 'b>(
 ) -> Result<Option<DataTypeWithSchema<'a>>, Error<'a>> {
     body.content
         .get("application/json")
+        .and_then(|json| json.schema.as_ref())
+        .map(|json_schema| compile(json_schema, components, chain, 0))
+        .transpose()
+}
+
+pub fn compile_response_json<'a, 'b>(
+    resp: &'a SchemaResponse,
+    components: Option<&'a Components>,
+    chain: &'b SchemaChain<'a, 'b>,
+) -> Result<Option<DataTypeWithSchema<'a>>, Error<'a>> {
+    resp.content
+        .as_ref()
+        .and_then(|content| content.get("application/json"))
         .and_then(|json| json.schema.as_ref())
         .map(|json_schema| compile(json_schema, components, chain, 0))
         .transpose()
