@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 //
-// Compiler of opeanpirs schema
+// Compilation of schema objects
 //
 
 use crate::compile::data_type::ActualType;

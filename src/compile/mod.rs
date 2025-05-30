@@ -7,11 +7,16 @@
 // operations depends on.
 //
 
-pub mod compiler;
 pub mod data_type;
+pub mod operation;
 pub mod schema_chain;
+pub mod schema_compiler;
 
-use crate::compile::data_type::TypeOrSchemaRef;
+use crate::compile::operation::request_body::RequestBody;
+use crate::compile::operation::request_body::RequestBodyOrReference;
+use crate::compile::operation::response_body::ResponseBody;
+use crate::compile::operation::response_body::ResponseBodyOrReference;
+use crate::compile::operation::Operation;
 use crate::compile::schema_chain::SchemaChain;
 use crate::schema;
 use crate::schema::components::Components;
@@ -34,7 +39,7 @@ use std::collections::HashSet;
 use crate::compile::schema_chain::CompiledSchemas;
 
 pub type CompiledBodies<'a> = indexmap::IndexMap<SRefRequestBody, RequestBody<'a>>;
-pub type CompiledResponses<'a> = indexmap::IndexMap<SRefResponsesName, RequestResponse<'a>>;
+pub type CompiledResponses<'a> = indexmap::IndexMap<SRefResponsesName, ResponseBody<'a>>;
 
 #[derive(Debug)]
 pub struct Compiled<'a> {
@@ -50,43 +55,9 @@ pub struct Parameter<'a> {
 }
 
 #[derive(Debug)]
-pub struct RequestBody<'a> {
-    pub json_type_or_ref: Option<TypeOrSchemaRef<'a>>,
-}
-
-#[derive(Debug)]
-pub enum RequestBodyOrReference<'a> {
-    Body(RequestBody<'a>),
-    Reference(SRefRequestBody),
-}
-
-#[derive(Debug)]
-pub struct RequestResponse<'a> {
-    pub json_type_or_ref: Option<TypeOrSchemaRef<'a>>,
-}
-
-#[derive(Debug)]
-pub enum RequestResponseOrReference<'a> {
-    Response(RequestResponse<'a>),
-    Reference(SRefResponsesName),
-}
-
-#[derive(Debug)]
 pub struct OperationResponses<'a> {
-    pub default: Option<RequestResponseOrReference<'a>>,
-    pub codes: indexmap::IndexMap<&'a HttpStatusCode, RequestResponseOrReference<'a>>,
-}
-
-#[derive(Debug)]
-pub struct Operation<'a> {
-    pub op_type: OperationType,
-    pub path: &'a Path,
-    pub path_params: HashMap<&'a parameter::Name, Parameter<'a>>,
-    pub query_params: Vec<Parameter<'a>>,
-    pub header_params: Vec<Parameter<'a>>,
-    pub cookie_params: Vec<Parameter<'a>>,
-    pub request_body_or_ref: Option<RequestBodyOrReference<'a>>,
-    pub request_responses: Option<OperationResponses<'a>>,
+    pub default: Option<ResponseBodyOrReference<'a>>,
+    pub codes: indexmap::IndexMap<&'a HttpStatusCode, ResponseBodyOrReference<'a>>,
 }
 
 #[derive(Debug)]
@@ -97,8 +68,8 @@ pub enum Error<'a> {
     WrongParameterReference(&'a Path, &'a Reference),
     WrongBodyReference(&'a Path, &'a Reference),
     WrongResponseReference(&'a Path, &'a Reference),
-    BodyCompilation(&'a Path, OperationType, compiler::Error<'a>),
-    ResponseCompilation(&'a Path, OperationType, compiler::Error<'a>),
+    BodyCompilation(&'a Path, OperationType, schema_compiler::Error<'a>),
+    ResponseCompilation(&'a Path, OperationType, schema_compiler::Error<'a>),
     ResponseCodeCompilation(&'a Path, OperationType, &'a HttpStatusCode, Box<Error<'a>>),
 }
 
@@ -243,16 +214,16 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     .transpose()?
                     .map(|resp| match resp {
                         ResponseCompileResult::ExistingResponse(sref) => {
-                            RequestResponseOrReference::Reference(sref)
+                            ResponseBodyOrReference::Reference(sref)
                         }
                         ResponseCompileResult::NewResponse((sref, resp, schemas)) => {
                             responses.insert(sref.clone(), resp);
                             chain.merge(schemas);
-                            RequestResponseOrReference::Reference(sref)
+                            ResponseBodyOrReference::Reference(sref)
                         }
                         ResponseCompileResult::DataType((resp, schemas)) => {
                             chain.merge(schemas);
-                            RequestResponseOrReference::Response(resp)
+                            ResponseBodyOrReference::Body(resp)
                         }
                     });
                 let codes = resps
@@ -264,16 +235,16 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                             self.compile_response(op_type.clone(), resp)
                                 .map(|resp| match resp {
                                     ResponseCompileResult::ExistingResponse(sref) => {
-                                        RequestResponseOrReference::Reference(sref)
+                                        ResponseBodyOrReference::Reference(sref)
                                     }
                                     ResponseCompileResult::NewResponse((sref, resp, schemas)) => {
                                         responses.insert(sref.clone(), resp);
                                         chain.merge(schemas);
-                                        RequestResponseOrReference::Reference(sref)
+                                        ResponseBodyOrReference::Reference(sref)
                                     }
                                     ResponseCompileResult::DataType((resp, schemas)) => {
                                         chain.merge(schemas);
-                                        RequestResponseOrReference::Response(resp)
+                                        ResponseBodyOrReference::Body(resp)
                                     }
                                 })
                                 .map_err(|err| {
@@ -368,7 +339,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             SchemaRequestBodyOrReference::RequestBody(b) => {
                 let mut chain = SchemaChain::new(self.schema_chain);
                 let json_type_or_ref =
-                    compiler::compile_body_json(b, self.components.as_ref(), &chain)
+                    schema_compiler::compile_body_json(b, self.components.as_ref(), &chain)
                         .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
                         .map(|v| {
                             chain.merge(v.schemas);
@@ -394,13 +365,16 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     let body_schema = components
                         .find_request_body(&body_sref)
                         .ok_or(Error::WrongBodyReference(self.path, r))?;
-                    let json_type_or_ref =
-                        compiler::compile_body_json(body_schema, self.components.as_ref(), &chain)
-                            .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                            .map(|v| {
-                                chain.merge(v.schemas);
-                                v.type_or_ref
-                            });
+                    let json_type_or_ref = schema_compiler::compile_body_json(
+                        body_schema,
+                        self.components.as_ref(),
+                        &chain,
+                    )
+                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
+                    .map(|v| {
+                        chain.merge(v.schemas);
+                        v.type_or_ref
+                    });
                     let request_body = RequestBody { json_type_or_ref };
                     Ok(BodyCompileResult::NewBody((
                         body_sref,
@@ -421,13 +395,13 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             SchemaResponseOrReference::Response(b) => {
                 let mut chain = SchemaChain::new(self.schema_chain);
                 let json_type_or_ref =
-                    compiler::compile_response_json(b, self.components.as_ref(), &chain)
+                    schema_compiler::compile_response_json(b, self.components.as_ref(), &chain)
                         .map_err(|err| Error::ResponseCompilation(self.path, op_type.clone(), err))?
                         .map(|v| {
                             chain.merge(v.schemas);
                             v.type_or_ref
                         });
-                let reps = RequestResponse { json_type_or_ref };
+                let reps = ResponseBody { json_type_or_ref };
                 Ok(ResponseCompileResult::DataType((reps, chain.done())))
             }
             SchemaResponseOrReference::Reference(r) => {
@@ -447,7 +421,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     let resp_schema = components
                         .find_response(&resp_sref)
                         .ok_or(Error::WrongResponseReference(self.path, r))?;
-                    let json_type_or_ref = compiler::compile_response_json(
+                    let json_type_or_ref = schema_compiler::compile_response_json(
                         resp_schema,
                         self.components.as_ref(),
                         &chain,
@@ -457,7 +431,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                         chain.merge(v.schemas);
                         v.type_or_ref
                     });
-                    let response = RequestResponse { json_type_or_ref };
+                    let response = ResponseBody { json_type_or_ref };
                     Ok(ResponseCompileResult::NewResponse((
                         resp_sref,
                         response,
@@ -482,9 +456,9 @@ enum ResponseCompileResult<'a> {
     // Body specified as reference and has been alredy compiled
     ExistingResponse(SRefResponsesName),
     // Body speicified as reference and compiled
-    NewResponse((SRefResponsesName, RequestResponse<'a>, CompiledSchemas<'a>)),
+    NewResponse((SRefResponsesName, ResponseBody<'a>, CompiledSchemas<'a>)),
     // Body specified in-place
-    DataType((RequestResponse<'a>, CompiledSchemas<'a>)),
+    DataType((ResponseBody<'a>, CompiledSchemas<'a>)),
 }
 
 struct OpCompileResult<'a> {
