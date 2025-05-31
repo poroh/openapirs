@@ -26,11 +26,10 @@ use crate::schema::path_item::PathItem;
 use crate::schema::reference::Reference as SchemaReference;
 use crate::schema::request_body::RequestBodyOrReference as SchemaRequestBodyOrReference;
 use crate::schema::responses::ResponseOrReference as SchemaResponseOrReference;
-use crate::schema::sref::SRefResponsesName;
 use parameter::Parameter;
 use request_body::CompileResult as BodyCompileResult;
 use request_body::RequestBodyOrReference;
-use response_body::ResponseBody;
+use response_body::CompileResult as ResponseCompileResult;
 use response_body::ResponseBodyOrReference;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -59,10 +58,9 @@ pub enum Error<'a> {
     ParameterNotDefined(&'a Path, SchemaParameterName),
     NotDefinedAsPathParameter(&'a Path, SchemaParameterName),
     RequestBodyCompile(&'a Path, OperationType, request_body::Error<'a>),
+    ResponseBodyCompile(&'a Path, OperationType, response_body::Error<'a>),
     WrongParameterReference(&'a Path, &'a SchemaReference),
-    WrongBodyReference(&'a Path, &'a SchemaReference),
     WrongResponseReference(&'a Path, &'a SchemaReference),
-    BodyCompilation(&'a Path, OperationType, schema_compiler::Error<'a>),
     ResponseCompilation(&'a Path, OperationType, schema_compiler::Error<'a>),
     ResponseCodeCompilation(&'a Path, OperationType, &'a HttpStatusCode, Box<Error<'a>>),
 }
@@ -171,10 +169,10 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     .map(|resp| self.compile_response(op_type.clone(), resp))
                     .transpose()?
                     .map(|resp| match resp {
-                        ResponseCompileResult::ExistingResponse(sref) => {
+                        ResponseCompileResult::Existing(sref) => {
                             ResponseBodyOrReference::Reference(sref)
                         }
-                        ResponseCompileResult::NewResponse((sref, resp, schemas)) => {
+                        ResponseCompileResult::New((sref, resp, schemas)) => {
                             response_bodies.insert(sref.clone(), resp);
                             chain.merge(schemas);
                             ResponseBodyOrReference::Reference(sref)
@@ -192,10 +190,10 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                             code,
                             self.compile_response(op_type.clone(), resp)
                                 .map(|resp| match resp {
-                                    ResponseCompileResult::ExistingResponse(sref) => {
+                                    ResponseCompileResult::Existing(sref) => {
                                         ResponseBodyOrReference::Reference(sref)
                                     }
-                                    ResponseCompileResult::NewResponse((sref, resp, schemas)) => {
+                                    ResponseCompileResult::New((sref, resp, schemas)) => {
                                         response_bodies.insert(sref.clone(), resp);
                                         chain.merge(schemas);
                                         ResponseBodyOrReference::Reference(sref)
@@ -307,60 +305,12 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
         op_type: OperationType,
         sresp: &'a SchemaResponseOrReference,
     ) -> Result<ResponseCompileResult<'a>, Error<'a>> {
-        match sresp {
-            SchemaResponseOrReference::Response(b) => {
-                let mut chain = SchemaChain::new(self.schema_chain);
-                let json_type_or_ref =
-                    response_body::compile_json(b, self.components.as_ref(), &chain)
-                        .map_err(|err| Error::ResponseCompilation(self.path, op_type.clone(), err))?
-                        .map(|v| {
-                            chain.merge(v.schemas);
-                            v.type_or_ref
-                        });
-                let reps = ResponseBody { json_type_or_ref };
-                Ok(ResponseCompileResult::DataType((reps, chain.done())))
-            }
-            SchemaResponseOrReference::Reference(r) => {
-                let resp_sref = r
-                    .sref
-                    .responses_sref()
-                    .ok_or(Error::WrongResponseReference(self.path, r))?;
-                if self.response_bodies.contains_key(&resp_sref) {
-                    // Already compiled:
-                    Ok(ResponseCompileResult::ExistingResponse(resp_sref))
-                } else {
-                    let mut chain = SchemaChain::new(self.schema_chain);
-                    let components = self
-                        .components
-                        .as_ref()
-                        .ok_or(Error::WrongResponseReference(self.path, r))?;
-                    let resp_schema = components
-                        .find_response(&resp_sref)
-                        .ok_or(Error::WrongResponseReference(self.path, r))?;
-                    let json_type_or_ref =
-                        response_body::compile_json(resp_schema, self.components.as_ref(), &chain)
-                            .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                            .map(|v| {
-                                chain.merge(v.schemas);
-                                v.type_or_ref
-                            });
-                    let response = ResponseBody { json_type_or_ref };
-                    Ok(ResponseCompileResult::NewResponse((
-                        resp_sref,
-                        response,
-                        chain.done(),
-                    )))
-                }
-            }
-        }
+        let cdata = response_body::CompileData {
+            components: self.components,
+            schema_chain: self.schema_chain,
+            response_bodies: self.response_bodies,
+        };
+        response_body::compile_response(cdata, sresp)
+            .map_err(|err| Error::ResponseBodyCompile(self.path, op_type.clone(), err))
     }
-}
-
-enum ResponseCompileResult<'a> {
-    // Body specified as reference and has been alredy compiled
-    ExistingResponse(SRefResponsesName),
-    // Body speicified as reference and compiled
-    NewResponse((SRefResponsesName, ResponseBody<'a>, Schemas<'a>)),
-    // Body specified in-place
-    DataType((ResponseBody<'a>, Schemas<'a>)),
 }
