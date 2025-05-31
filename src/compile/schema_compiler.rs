@@ -83,7 +83,7 @@ pub fn compile<'a, 'b>(
 pub fn compile_ref<'a, 'b>(
     r: &'a Reference,
     components: Option<&'a Components>,
-    chain: &'b SchemaChain<'a, 'b>,
+    parent_chain: &'b SchemaChain<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     let schemas_ref = r
@@ -93,6 +93,7 @@ pub fn compile_ref<'a, 'b>(
         .ok_or(Error::UnexpecetedReferenceType(&r.sref))?;
     match schemas_ref {
         SRefSchemas::Normal(schemas_name) => {
+            let chain = SchemaChain::new_ref(parent_chain, &schemas_name);
             if chain.contains(&schemas_name) {
                 // If schema has been already compiled just refer to it
                 Ok(DataTypeWithSchema {
@@ -105,7 +106,7 @@ pub fn compile_ref<'a, 'b>(
                     .ok_or(Error::SchemasNotDefinedButReferenced)?
                     .find_schema_by_name(&schemas_name)
                     .ok_or(Error::SchemaRefernceNotFound(schemas_name.clone()))?;
-                let compiled_schema = compile(schema, components, chain, depth + 1)
+                let compiled_schema = compile(schema, components, &chain, depth + 1)
                     .map_err(|err| Error::SchemaCompilation(schemas_name.clone(), Box::new(err)))?;
                 match compiled_schema.type_or_ref {
                     TypeOrSchemaRef::DataType(dt) => Ok(DataTypeWithSchema {
@@ -160,7 +161,8 @@ pub fn compile_ref<'a, 'b>(
                                     pname.clone(),
                                 )))
                         })?;
-                    compile(dt, components, chain, depth + 1)
+                    let chain = SchemaChain::new_ref(parent_chain, schemas_name);
+                    compile(dt, components, &chain, depth + 1)
                 }
                 _ => Err(Error::ReferenceToUncompatibleObject(schemas_ref)),
             }

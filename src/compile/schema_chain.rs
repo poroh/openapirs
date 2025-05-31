@@ -17,6 +17,7 @@ pub type Schemas<'a> = indexmap::IndexMap<SRefSchemasObjectName, DataType<'a>>;
 // Lifetime 'b is lifetime of schemas.
 #[derive(Default)]
 pub struct SchemaChain<'a, 'b> {
+    pub sref: Option<&'b SRefSchemasObjectName>,
     pub parent: Option<&'b SchemaChain<'a, 'b>>,
     pub current: Schemas<'a>,
 }
@@ -24,13 +25,24 @@ pub struct SchemaChain<'a, 'b> {
 impl<'a, 'b> SchemaChain<'a, 'b> {
     pub fn new(parent: &'b SchemaChain<'a, 'b>) -> Self {
         Self {
+            sref: None,
+            parent: Some(parent),
+            current: indexmap::IndexMap::default(),
+        }
+    }
+
+    pub fn new_ref(parent: &'b SchemaChain<'a, 'b>, sref: &'b SRefSchemasObjectName) -> Self {
+        Self {
+            sref: Some(sref),
             parent: Some(parent),
             current: indexmap::IndexMap::default(),
         }
     }
 
     pub fn contains(&self, v: &SRefSchemasObjectName) -> bool {
-        self.current.contains_key(v) || self.parent.map(|p| p.contains(v)).unwrap_or(false)
+        self.sref == Some(v)
+            || self.current.contains_key(v)
+            || self.parent.map(|p| p.contains(v)).unwrap_or(false)
     }
 
     pub fn merge(&mut self, v: Schemas<'a>) {
