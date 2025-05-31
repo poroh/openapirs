@@ -60,6 +60,27 @@ pub enum CompileResult<'a> {
     DataType((RequestBody<'a>, Schemas<'a>)),
 }
 
+impl<'a> CompileResult<'a> {
+    pub fn aggregate<'b>(
+        self,
+        request_bodies: &mut RequestBodies<'a>,
+        chain: &mut SchemaChain<'a, 'b>,
+    ) -> RequestBodyOrReference<'a> {
+        match self {
+            CompileResult::Existing(sref) => RequestBodyOrReference::Reference(sref),
+            CompileResult::New((sref, body, schemas)) => {
+                request_bodies.insert(sref.clone(), body);
+                chain.merge(schemas);
+                RequestBodyOrReference::Reference(sref)
+            }
+            CompileResult::DataType((body, schemas)) => {
+                chain.merge(schemas);
+                RequestBodyOrReference::Body(body)
+            }
+        }
+    }
+}
+
 pub fn compile_body<'a, 'b>(
     data: CompileData<'a, 'b>,
     sbody: &'a SchemaRequestBodyOrReference,

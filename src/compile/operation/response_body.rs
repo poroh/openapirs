@@ -55,6 +55,27 @@ pub enum CompileResult<'a> {
     DataType((ResponseBody<'a>, Schemas<'a>)),
 }
 
+impl<'a> CompileResult<'a> {
+    pub fn aggregate<'b>(
+        self,
+        response_bodies: &mut ResponseBodies<'a>,
+        chain: &mut SchemaChain<'a, 'b>,
+    ) -> ResponseBodyOrReference<'a> {
+        match self {
+            CompileResult::Existing(sref) => ResponseBodyOrReference::Reference(sref),
+            CompileResult::New((sref, resp, schemas)) => {
+                response_bodies.insert(sref.clone(), resp);
+                chain.merge(schemas);
+                ResponseBodyOrReference::Reference(sref)
+            }
+            CompileResult::DataType((resp, schemas)) => {
+                chain.merge(schemas);
+                ResponseBodyOrReference::Body(resp)
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Error<'a> {
     JsonCompile(SchemaCompileError<'a>),

@@ -48,17 +48,17 @@ impl PathItem {
     pub fn operations_iter(&self) -> OperationIter {
         OperationIter {
             path_item: self,
-            op_type: Some(OperationType::Get),
+            op_type: Some(&GET),
         }
     }
 }
 
 pub struct OperationIter<'a> {
     path_item: &'a PathItem,
-    op_type: Option<OperationType>,
+    op_type: Option<&'static OperationType>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum OperationType {
     Get,
     Put,
@@ -70,38 +70,47 @@ pub enum OperationType {
     Trace,
 }
 
+static GET: OperationType = OperationType::Get;
+static PUT: OperationType = OperationType::Put;
+static POST: OperationType = OperationType::Post;
+static DELETE: OperationType = OperationType::Delete;
+static OPTIONS: OperationType = OperationType::Options;
+static HEAD: OperationType = OperationType::Head;
+static PATCH: OperationType = OperationType::Patch;
+static TRACE: OperationType = OperationType::Trace;
+
 impl<'a> Iterator for OperationIter<'a> {
-    type Item = (OperationType, &'a Operation);
+    type Item = (&'static OperationType, &'a Operation);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.op_type.clone().and_then(|op| {
+        self.op_type.and_then(|op| {
             match op {
                 OperationType::Get => {
-                    self.op_type = Some(OperationType::Put);
+                    self.op_type = Some(&PUT);
                     &self.path_item.get
                 }
                 OperationType::Put => {
-                    self.op_type = Some(OperationType::Post);
+                    self.op_type = Some(&POST);
                     &self.path_item.put
                 }
                 OperationType::Post => {
-                    self.op_type = Some(OperationType::Delete);
+                    self.op_type = Some(&DELETE);
                     &self.path_item.post
                 }
                 OperationType::Delete => {
-                    self.op_type = Some(OperationType::Options);
+                    self.op_type = Some(&OPTIONS);
                     &self.path_item.delete
                 }
                 OperationType::Options => {
-                    self.op_type = Some(OperationType::Head);
+                    self.op_type = Some(&HEAD);
                     &self.path_item.delete
                 }
                 OperationType::Head => {
-                    self.op_type = Some(OperationType::Patch);
+                    self.op_type = Some(&PATCH);
                     &self.path_item.head
                 }
                 OperationType::Patch => {
-                    self.op_type = Some(OperationType::Trace);
+                    self.op_type = Some(&TRACE);
                     &self.path_item.patch
                 }
                 OperationType::Trace => {
