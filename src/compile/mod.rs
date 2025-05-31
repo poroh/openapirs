@@ -26,9 +26,10 @@ use crate::compile::schema_chain::Schemas;
 use crate::schema;
 use crate::schema::components::Components;
 use crate::schema::http_status_code::HttpStatusCode;
-use crate::schema::parameter;
+use crate::schema::parameter::Name as SchemaParameterName;
 use crate::schema::parameter::Parameter as SchemaParameter;
 use crate::schema::parameter::ParameterOrReference;
+use crate::schema::parameter::Place as SchemaParameterPlace;
 use crate::schema::path::Path;
 use crate::schema::path::PathParseError;
 use crate::schema::path_item::OperationType;
@@ -55,8 +56,8 @@ pub struct Compiled<'a> {
 #[derive(Debug)]
 pub enum Error<'a> {
     PathParseError(PathParseError),
-    ParameterNotDefined(&'a Path, parameter::Name),
-    NotDefinedAsPathParameter(&'a Path, parameter::Name),
+    ParameterNotDefined(&'a Path, SchemaParameterName),
+    NotDefinedAsPathParameter(&'a Path, SchemaParameterName),
     WrongParameterReference(&'a Path, &'a Reference),
     WrongBodyReference(&'a Path, &'a Reference),
     WrongResponseReference(&'a Path, &'a Reference),
@@ -130,7 +131,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
         })
     }
 
-    fn resolve_path_parameter(&self, pname: &parameter::Name) -> Option<&'a SchemaParameter> {
+    fn resolve_path_parameter(&self, pname: &SchemaParameterName) -> Option<&'a SchemaParameter> {
         let find_param = |ps: &'a Vec<ParameterOrReference>| {
             for p in ps.iter() {
                 let candidate = match p {
@@ -163,11 +164,11 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             .map(|pname| {
                 let name = pname
                     .map_err(Error::PathParseError)
-                    .map(|v| parameter::Name::new(v.into()))?;
+                    .map(|v| SchemaParameterName::new(v.into()))?;
                 self.resolve_path_parameter(&name)
                     .ok_or(Error::ParameterNotDefined(self.path, name.clone()))
                     .and_then(|p| match p.place {
-                        parameter::Place::Path(_) => Ok(p),
+                        SchemaParameterPlace::Path(_) => Ok(p),
                         _ => Err(Error::NotDefinedAsPathParameter(self.path, name)),
                     })
                     .map(|v| (&v.name, Parameter { schema_param: v }))
@@ -259,9 +260,9 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                 op_type,
                 path: self.path,
                 path_params,
-                query_params: self.compile_params_by_group(is_query_param)?,
-                header_params: self.compile_params_by_group(is_header_param)?,
-                cookie_params: self.compile_params_by_group(is_cookie_param)?,
+                query_params: self.compile_params_by_group(SchemaParameter::is_query)?,
+                header_params: self.compile_params_by_group(SchemaParameter::is_header)?,
+                cookie_params: self.compile_params_by_group(SchemaParameter::is_cookie)?,
                 request_body_or_ref,
                 request_responses: responses.unwrap_or_default(),
             },
@@ -452,34 +453,4 @@ struct OpCompileResult<'a> {
     schemas: Schemas<'a>,
     request_bodies: RequestBodies<'a>,
     response_bodies: ResponseBodies<'a>,
-}
-
-fn is_query_param(p: &SchemaParameter) -> bool {
-    matches!(
-        p,
-        SchemaParameter {
-            place: parameter::Place::Query(_),
-            ..
-        }
-    )
-}
-
-fn is_header_param(p: &SchemaParameter) -> bool {
-    matches!(
-        p,
-        SchemaParameter {
-            place: parameter::Place::Header(_),
-            ..
-        }
-    )
-}
-
-fn is_cookie_param(p: &SchemaParameter) -> bool {
-    matches!(
-        p,
-        SchemaParameter {
-            place: parameter::Place::Cookie(_),
-            ..
-        }
-    )
 }

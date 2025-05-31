@@ -21,6 +21,38 @@ pub struct Parameter {
     pub content_schema: ContentSchema,
 }
 
+impl Parameter {
+    pub fn is_query(&self) -> bool {
+        matches!(
+            self,
+            Parameter {
+                place: Place::Query(_),
+                ..
+            }
+        )
+    }
+
+    pub fn is_header(&self) -> bool {
+        matches!(
+            self,
+            Parameter {
+                place: Place::Header(_),
+                ..
+            }
+        )
+    }
+
+    pub fn is_cookie(&self) -> bool {
+        matches!(
+            self,
+            Parameter {
+                place: Place::Cookie(_),
+                ..
+            }
+        )
+    }
+}
+
 pub type Name = TaggedString<ParameterNameTag>;
 pub enum ParameterNameTag {}
 
