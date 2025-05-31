@@ -20,6 +20,7 @@ use crate::compile::operation::response_body::ResponseBodyOrReference;
 use crate::compile::operation::Operation;
 use crate::compile::operation::Responses;
 use crate::compile::schema_chain::SchemaChain;
+use crate::compile::schema_chain::Schemas;
 use crate::schema;
 use crate::schema::components::Components;
 use crate::schema::http_status_code::HttpStatusCode;
@@ -38,16 +39,14 @@ use crate::schema::sref::SRefResponsesName;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::compile::schema_chain::CompiledSchemas;
-
-pub type CompiledBodies<'a> = indexmap::IndexMap<SRefRequestBody, RequestBody<'a>>;
-pub type CompiledResponses<'a> = indexmap::IndexMap<SRefResponsesName, ResponseBody<'a>>;
+pub type RequestBodies<'a> = indexmap::IndexMap<SRefRequestBody, RequestBody<'a>>;
+pub type ResponseBodies<'a> = indexmap::IndexMap<SRefResponsesName, ResponseBody<'a>>;
 
 #[derive(Debug)]
 pub struct Compiled<'a> {
-    pub request_bodies: CompiledBodies<'a>,
-    pub response_bodies: CompiledResponses<'a>,
-    pub schemas: CompiledSchemas<'a>,
+    pub request_bodies: RequestBodies<'a>,
+    pub response_bodies: ResponseBodies<'a>,
+    pub schemas: Schemas<'a>,
     pub operations: Vec<Operation<'a>>,
 }
 
@@ -68,8 +67,8 @@ type CResult<'a, T> = Result<T, Error<'a>>;
 
 pub fn compile(d: &schema::Description) -> CResult<Compiled> {
     let mut schema_chain = SchemaChain::default();
-    let mut request_bodies = CompiledBodies::default();
-    let mut response_bodies = CompiledResponses::default();
+    let mut request_bodies = RequestBodies::default();
+    let mut response_bodies = ResponseBodies::default();
     let operations = d
         .paths
         .as_ref()
@@ -116,8 +115,8 @@ struct OpCompileData<'a, 'b> {
     op: &'a schema::operation::Operation,
     components: &'a Option<Components>,
     schema_chain: &'b SchemaChain<'a, 'b>,
-    request_bodies: &'b CompiledBodies<'a>,
-    response_bodies: &'b CompiledResponses<'a>,
+    request_bodies: &'b RequestBodies<'a>,
+    response_bodies: &'b ResponseBodies<'a>,
 }
 
 impl<'a, 'b> OpCompileData<'a, 'b> {
@@ -154,8 +153,8 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
 
     fn compile_operation(&self, op_type: OperationType) -> Result<OpCompileResult<'a>, Error<'a>> {
         let mut chain = SchemaChain::new(self.schema_chain);
-        let mut request_bodies = CompiledBodies::default();
-        let mut response_bodies = CompiledResponses::default();
+        let mut request_bodies = RequestBodies::default();
+        let mut response_bodies = ResponseBodies::default();
         let path_params = self
             .path
             .path_params_iter()
@@ -438,25 +437,25 @@ enum BodyCompileResult<'a> {
     // Body specified as reference and has been alredy compiled
     ExistingBody(SRefRequestBody),
     // Body speicified as reference and compiled
-    NewBody((SRefRequestBody, RequestBody<'a>, CompiledSchemas<'a>)),
+    NewBody((SRefRequestBody, RequestBody<'a>, Schemas<'a>)),
     // Body specified in-place
-    DataType((RequestBody<'a>, CompiledSchemas<'a>)),
+    DataType((RequestBody<'a>, Schemas<'a>)),
 }
 
 enum ResponseCompileResult<'a> {
     // Body specified as reference and has been alredy compiled
     ExistingResponse(SRefResponsesName),
     // Body speicified as reference and compiled
-    NewResponse((SRefResponsesName, ResponseBody<'a>, CompiledSchemas<'a>)),
+    NewResponse((SRefResponsesName, ResponseBody<'a>, Schemas<'a>)),
     // Body specified in-place
-    DataType((ResponseBody<'a>, CompiledSchemas<'a>)),
+    DataType((ResponseBody<'a>, Schemas<'a>)),
 }
 
 struct OpCompileResult<'a> {
     op: Operation<'a>,
-    schemas: CompiledSchemas<'a>,
-    request_bodies: CompiledBodies<'a>,
-    response_bodies: CompiledResponses<'a>,
+    schemas: Schemas<'a>,
+    request_bodies: RequestBodies<'a>,
+    response_bodies: ResponseBodies<'a>,
 }
 
 fn is_query_param(p: &SchemaParameter) -> bool {

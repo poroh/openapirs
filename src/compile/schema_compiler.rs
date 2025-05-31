@@ -11,8 +11,8 @@ use crate::compile::data_type::DataType;
 use crate::compile::data_type::NormalCompiledType;
 use crate::compile::data_type::NullableCompiledType;
 use crate::compile::data_type::TypeOrSchemaRef;
-use crate::compile::schema_chain::CompiledSchemas;
 use crate::compile::schema_chain::SchemaChain;
+use crate::compile::schema_chain::Schemas;
 use crate::schema::components::Components;
 use crate::schema::data_type::array::Array as SchemaArray;
 use crate::schema::data_type::object::Object as SchemaObject;
@@ -123,7 +123,7 @@ pub fn compile_ref<'a, 'b>(
                 // If schema has been already compiled just refer to it
                 Ok(DataTypeWithSchema {
                     type_or_ref: TypeOrSchemaRef::Reference(schemas_name),
-                    schemas: CompiledSchemas::default(),
+                    schemas: Schemas::default(),
                 })
             } else {
                 // If schema has not been compiled:
@@ -233,7 +233,7 @@ pub fn compile_normal_actual_type<'a>(
     dt: &'a TypeSchema,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     Ok(DataTypeWithSchema {
-        schemas: CompiledSchemas::default(),
+        schemas: Schemas::default(),
         type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
             readonly: at.readonly,
             writeonly: at.writeonly,
@@ -255,7 +255,7 @@ fn compile_object<'a, 'b>(
     components: Option<&'a Components>,
     parent_chain: &'b SchemaChain<'a, 'b>,
     depth: u32,
-) -> Result<(CompiledObject<'a>, CompiledSchemas<'a>), Error<'a>> {
+) -> Result<(CompiledObject<'a>, Schemas<'a>), Error<'a>> {
     let mut result = CompiledObject::default();
     let mut chain = SchemaChain::new(parent_chain);
     if let Some(properties) = sobj.properties.as_ref() {
@@ -310,7 +310,7 @@ fn compile_array<'a, 'b>(
     components: Option<&'a Components>,
     parent_chain: &'b SchemaChain<'a, 'b>,
     depth: u32,
-) -> Result<(CompiledArray<'a>, CompiledSchemas<'a>), Error<'a>> {
+) -> Result<(CompiledArray<'a>, Schemas<'a>), Error<'a>> {
     let mut chain = SchemaChain::new(parent_chain);
     let sitems = sarr.items.as_ref().ok_or(Error::NoItemsInArray)?;
     let cresult = compile(sitems, components, &chain, depth + 1)
@@ -343,14 +343,14 @@ pub fn compile_nullable_array<'a, 'b>(
 
 #[derive(Debug)]
 pub struct DataTypeWithSchema<'a> {
-    pub schemas: CompiledSchemas<'a>,
+    pub schemas: Schemas<'a>,
     pub type_or_ref: TypeOrSchemaRef<'a>,
 }
 
 impl<'a> DataTypeWithSchema<'a> {
     pub fn actual_type(at: &'a SchemaActualType, compiled_type: CompiledType<'a>) -> Self {
         Self {
-            schemas: CompiledSchemas::default(),
+            schemas: Schemas::default(),
             type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
                 readonly: at.readonly,
                 writeonly: at.writeonly,

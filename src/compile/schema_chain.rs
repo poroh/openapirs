@@ -11,14 +11,14 @@
 use crate::compile::data_type::DataType;
 use crate::schema::sref::SRefSchemasObjectName;
 
-pub type CompiledSchemas<'a> = indexmap::IndexMap<SRefSchemasObjectName, DataType<'a>>;
+pub type Schemas<'a> = indexmap::IndexMap<SRefSchemasObjectName, DataType<'a>>;
 
 // Lifetime 'a is lifetime of parsed schema object.
 // Lifetime 'b is lifetime of schemas.
 #[derive(Default)]
 pub struct SchemaChain<'a, 'b> {
     pub parent: Option<&'b SchemaChain<'a, 'b>>,
-    pub current: CompiledSchemas<'a>,
+    pub current: Schemas<'a>,
 }
 
 impl<'a, 'b> SchemaChain<'a, 'b> {
@@ -33,11 +33,11 @@ impl<'a, 'b> SchemaChain<'a, 'b> {
         self.current.contains_key(v) || self.parent.map(|p| p.contains(v)).unwrap_or(false)
     }
 
-    pub fn merge(&mut self, v: CompiledSchemas<'a>) {
+    pub fn merge(&mut self, v: Schemas<'a>) {
         self.current.extend(v);
     }
 
-    pub fn done(self) -> CompiledSchemas<'a> {
+    pub fn done(self) -> Schemas<'a> {
         self.current
     }
 }
