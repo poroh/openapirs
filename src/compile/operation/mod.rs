@@ -26,10 +26,9 @@ use crate::schema::path_item::PathItem;
 use crate::schema::reference::Reference as SchemaReference;
 use crate::schema::request_body::RequestBodyOrReference as SchemaRequestBodyOrReference;
 use crate::schema::responses::ResponseOrReference as SchemaResponseOrReference;
-use crate::schema::sref::SRefRequestBody;
 use crate::schema::sref::SRefResponsesName;
 use parameter::Parameter;
-use request_body::RequestBody;
+use request_body::CompileResult as BodyCompileResult;
 use request_body::RequestBodyOrReference;
 use response_body::ResponseBody;
 use response_body::ResponseBodyOrReference;
@@ -59,6 +58,7 @@ pub enum Error<'a> {
     PathParseError(PathParseError),
     ParameterNotDefined(&'a Path, SchemaParameterName),
     NotDefinedAsPathParameter(&'a Path, SchemaParameterName),
+    RequestBodyCompile(&'a Path, OperationType, request_body::Error<'a>),
     WrongParameterReference(&'a Path, &'a SchemaReference),
     WrongBodyReference(&'a Path, &'a SchemaReference),
     WrongResponseReference(&'a Path, &'a SchemaReference),
@@ -148,8 +148,8 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             .transpose()?;
 
         let request_body_or_ref = body_compile_result.map(|v| match v {
-            BodyCompileResult::ExistingBody(sref) => RequestBodyOrReference::Reference(sref),
-            BodyCompileResult::NewBody((sref, body, schemas)) => {
+            BodyCompileResult::Existing(sref) => RequestBodyOrReference::Reference(sref),
+            BodyCompileResult::New((sref, body, schemas)) => {
                 request_bodies.insert(sref.clone(), body);
                 chain.merge(schemas);
                 RequestBodyOrReference::Reference(sref)
@@ -293,52 +293,13 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
         op_type: OperationType,
         sbody: &'a SchemaRequestBodyOrReference,
     ) -> Result<BodyCompileResult<'a>, Error<'a>> {
-        match sbody {
-            SchemaRequestBodyOrReference::RequestBody(b) => {
-                let mut chain = SchemaChain::new(self.schema_chain);
-                let json_type_or_ref =
-                    request_body::compile_json(b, self.components.as_ref(), &chain)
-                        .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                        .map(|v| {
-                            chain.merge(v.schemas);
-                            v.type_or_ref
-                        });
-                let request_body = RequestBody { json_type_or_ref };
-                Ok(BodyCompileResult::DataType((request_body, chain.done())))
-            }
-            SchemaRequestBodyOrReference::Reference(r) => {
-                let body_sref = r
-                    .sref
-                    .request_body_sref()
-                    .ok_or(Error::WrongBodyReference(self.path, r))?;
-                if self.request_bodies.contains_key(&body_sref) {
-                    // Already compiled:
-                    Ok(BodyCompileResult::ExistingBody(body_sref))
-                } else {
-                    let mut chain = SchemaChain::new(self.schema_chain);
-                    let components = self
-                        .components
-                        .as_ref()
-                        .ok_or(Error::WrongBodyReference(self.path, r))?;
-                    let body_schema = components
-                        .find_request_body(&body_sref)
-                        .ok_or(Error::WrongBodyReference(self.path, r))?;
-                    let json_type_or_ref =
-                        request_body::compile_json(body_schema, self.components.as_ref(), &chain)
-                            .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                            .map(|v| {
-                                chain.merge(v.schemas);
-                                v.type_or_ref
-                            });
-                    let request_body = RequestBody { json_type_or_ref };
-                    Ok(BodyCompileResult::NewBody((
-                        body_sref,
-                        request_body,
-                        chain.done(),
-                    )))
-                }
-            }
-        }
+        let cdata = request_body::CompileData {
+            components: self.components,
+            schema_chain: self.schema_chain,
+            request_bodies: self.request_bodies,
+        };
+        request_body::compile_body(cdata, sbody)
+            .map_err(|err| Error::RequestBodyCompile(self.path, op_type.clone(), err))
     }
 
     fn compile_response(
@@ -393,15 +354,6 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             }
         }
     }
-}
-
-enum BodyCompileResult<'a> {
-    // Body specified as reference and has been alredy compiled
-    ExistingBody(SRefRequestBody),
-    // Body speicified as reference and compiled
-    NewBody((SRefRequestBody, RequestBody<'a>, Schemas<'a>)),
-    // Body specified in-place
-    DataType((RequestBody<'a>, Schemas<'a>)),
 }
 
 enum ResponseCompileResult<'a> {
