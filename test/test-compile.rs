@@ -29,27 +29,18 @@ fn main() -> Result<(), Error> {
     let spec: openapirs::schema::Description =
         serde_yaml::from_str(&contents).map_err(Error::SerdeYml)?;
     let result = compile::compile(&spec).map_err(|err| Error::Compile(format!("{err:?}")))?;
+    println!("================================================================================");
     for (name, schema) in result.schemas.iter() {
-        println!(
-            "================================================================================"
-        );
-        println!("Schema: {name:?}:");
-        println!("{schema:?}");
+        println!("Schema: {name:?}: {schema:?}");
     }
+    println!("================================================================================");
     for (name, body_schema) in result.request_bodies.iter() {
-        println!(
-            "================================================================================"
-        );
-        println!("Requst body: {name:?}:");
-        println!("{body_schema:?}");
+        println!("Requst body: {name:?}: {body_schema:?}");
     }
 
+    println!("================================================================================");
     for (name, resp_schema) in result.response_bodies.iter() {
-        println!(
-            "================================================================================"
-        );
-        println!("Response: {name:?}:");
-        println!("{resp_schema:?}");
+        println!("Response: {name:?}: {resp_schema:?}");
     }
 
     println!("================================================================================");
