@@ -13,8 +13,10 @@ pub mod schema_chain;
 pub mod schema_compiler;
 
 use crate::compile::operation::parameter::Parameter;
+use crate::compile::operation::request_body;
 use crate::compile::operation::request_body::RequestBody;
 use crate::compile::operation::request_body::RequestBodyOrReference;
+use crate::compile::operation::response_body;
 use crate::compile::operation::response_body::ResponseBody;
 use crate::compile::operation::response_body::ResponseBodyOrReference;
 use crate::compile::operation::Operation;
@@ -329,7 +331,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             SchemaRequestBodyOrReference::RequestBody(b) => {
                 let mut chain = SchemaChain::new(self.schema_chain);
                 let json_type_or_ref =
-                    schema_compiler::compile_body_json(b, self.components.as_ref(), &chain)
+                    request_body::compile_json(b, self.components.as_ref(), &chain)
                         .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
                         .map(|v| {
                             chain.merge(v.schemas);
@@ -355,16 +357,13 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     let body_schema = components
                         .find_request_body(&body_sref)
                         .ok_or(Error::WrongBodyReference(self.path, r))?;
-                    let json_type_or_ref = schema_compiler::compile_body_json(
-                        body_schema,
-                        self.components.as_ref(),
-                        &chain,
-                    )
-                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                    .map(|v| {
-                        chain.merge(v.schemas);
-                        v.type_or_ref
-                    });
+                    let json_type_or_ref =
+                        request_body::compile_json(body_schema, self.components.as_ref(), &chain)
+                            .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
+                            .map(|v| {
+                                chain.merge(v.schemas);
+                                v.type_or_ref
+                            });
                     let request_body = RequestBody { json_type_or_ref };
                     Ok(BodyCompileResult::NewBody((
                         body_sref,
@@ -385,7 +384,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             SchemaResponseOrReference::Response(b) => {
                 let mut chain = SchemaChain::new(self.schema_chain);
                 let json_type_or_ref =
-                    schema_compiler::compile_response_json(b, self.components.as_ref(), &chain)
+                    response_body::compile_json(b, self.components.as_ref(), &chain)
                         .map_err(|err| Error::ResponseCompilation(self.path, op_type.clone(), err))?
                         .map(|v| {
                             chain.merge(v.schemas);
@@ -411,16 +410,13 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     let resp_schema = components
                         .find_response(&resp_sref)
                         .ok_or(Error::WrongResponseReference(self.path, r))?;
-                    let json_type_or_ref = schema_compiler::compile_response_json(
-                        resp_schema,
-                        self.components.as_ref(),
-                        &chain,
-                    )
-                    .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
-                    .map(|v| {
-                        chain.merge(v.schemas);
-                        v.type_or_ref
-                    });
+                    let json_type_or_ref =
+                        response_body::compile_json(resp_schema, self.components.as_ref(), &chain)
+                            .map_err(|err| Error::BodyCompilation(self.path, op_type.clone(), err))?
+                            .map(|v| {
+                                chain.merge(v.schemas);
+                                v.type_or_ref
+                            });
                     let response = ResponseBody { json_type_or_ref };
                     Ok(ResponseCompileResult::NewResponse((
                         resp_sref,

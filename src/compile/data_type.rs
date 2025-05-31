@@ -4,9 +4,11 @@
 // with all required schemas with it.
 //
 
+use crate::compile::schema_chain::Schemas;
 use crate::schema::data_type::default::NonNullableDefault;
 use crate::schema::data_type::default::NullableDefault;
 use crate::schema::data_type::numerical;
+use crate::schema::data_type::ActualType as SchemaActualType;
 use crate::schema::data_type::BooleanType;
 use crate::schema::data_type::StringType;
 use crate::schema::sref::SRefSchemasObjectName;
@@ -91,4 +93,23 @@ pub enum CompiledAdditionalProperties<'a> {
 #[derive(Debug)]
 pub struct CompiledArray<'a> {
     pub items: Box<TypeOrSchemaRef<'a>>,
+}
+
+#[derive(Debug)]
+pub struct DataTypeWithSchema<'a> {
+    pub schemas: Schemas<'a>,
+    pub type_or_ref: TypeOrSchemaRef<'a>,
+}
+
+impl<'a> DataTypeWithSchema<'a> {
+    pub fn actual_type(at: &'a SchemaActualType, compiled_type: CompiledType<'a>) -> Self {
+        Self {
+            schemas: Schemas::default(),
+            type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
+                readonly: at.readonly,
+                writeonly: at.writeonly,
+                compiled_type,
+            })),
+        }
+    }
 }
