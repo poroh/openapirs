@@ -44,7 +44,7 @@ fn main() -> Result<(), Error> {
         println!("{body_schema:?}");
     }
 
-    for (name, resp_schema) in result.responses.iter() {
+    for (name, resp_schema) in result.response_bodies.iter() {
         println!(
             "================================================================================"
         );

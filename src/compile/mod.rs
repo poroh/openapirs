@@ -12,11 +12,13 @@ pub mod operation;
 pub mod schema_chain;
 pub mod schema_compiler;
 
+use crate::compile::operation::parameter::Parameter;
 use crate::compile::operation::request_body::RequestBody;
 use crate::compile::operation::request_body::RequestBodyOrReference;
 use crate::compile::operation::response_body::ResponseBody;
 use crate::compile::operation::response_body::ResponseBodyOrReference;
 use crate::compile::operation::Operation;
+use crate::compile::operation::Responses;
 use crate::compile::schema_chain::SchemaChain;
 use crate::schema;
 use crate::schema::components::Components;
@@ -44,20 +46,9 @@ pub type CompiledResponses<'a> = indexmap::IndexMap<SRefResponsesName, ResponseB
 #[derive(Debug)]
 pub struct Compiled<'a> {
     pub request_bodies: CompiledBodies<'a>,
-    pub responses: CompiledResponses<'a>,
+    pub response_bodies: CompiledResponses<'a>,
     pub schemas: CompiledSchemas<'a>,
     pub operations: Vec<Operation<'a>>,
-}
-
-#[derive(Debug)]
-pub struct Parameter<'a> {
-    pub schema_param: &'a SchemaParameter,
-}
-
-#[derive(Debug)]
-pub struct OperationResponses<'a> {
-    pub default: Option<ResponseBodyOrReference<'a>>,
-    pub codes: indexmap::IndexMap<&'a HttpStatusCode, ResponseBodyOrReference<'a>>,
 }
 
 #[derive(Debug)]
@@ -78,7 +69,7 @@ type CResult<'a, T> = Result<T, Error<'a>>;
 pub fn compile(d: &schema::Description) -> CResult<Compiled> {
     let mut schema_chain = SchemaChain::default();
     let mut request_bodies = CompiledBodies::default();
-    let mut responses = CompiledResponses::default();
+    let mut response_bodies = CompiledResponses::default();
     let operations = d
         .paths
         .as_ref()
@@ -95,12 +86,12 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
                                 components: &d.components,
                                 schema_chain: &schema_chain,
                                 request_bodies: &request_bodies,
-                                responses: &responses,
+                                response_bodies: &response_bodies,
                             };
                             let opr = cdata.compile_operation(op_type)?;
                             schema_chain.merge(opr.schemas);
                             request_bodies.extend(opr.request_bodies);
-                            responses.extend(opr.responses);
+                            response_bodies.extend(opr.response_bodies);
                             Ok(opr.op)
                         })
                         .collect::<Result<Vec<_>, _>>()
@@ -112,7 +103,7 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
         })
         .unwrap_or(Ok(vec![]))?;
     Ok(Compiled {
-        responses,
+        response_bodies,
         request_bodies,
         schemas: schema_chain.done(),
         operations,
@@ -126,7 +117,7 @@ struct OpCompileData<'a, 'b> {
     components: &'a Option<Components>,
     schema_chain: &'b SchemaChain<'a, 'b>,
     request_bodies: &'b CompiledBodies<'a>,
-    responses: &'b CompiledResponses<'a>,
+    response_bodies: &'b CompiledResponses<'a>,
 }
 
 impl<'a, 'b> OpCompileData<'a, 'b> {
@@ -164,7 +155,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
     fn compile_operation(&self, op_type: OperationType) -> Result<OpCompileResult<'a>, Error<'a>> {
         let mut chain = SchemaChain::new(self.schema_chain);
         let mut request_bodies = CompiledBodies::default();
-        let mut responses = CompiledResponses::default();
+        let mut response_bodies = CompiledResponses::default();
         let path_params = self
             .path
             .path_params_iter()
@@ -202,7 +193,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             }
         });
 
-        let request_responses = self
+        let responses = self
             .op
             .responses
             .as_ref()
@@ -217,7 +208,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                             ResponseBodyOrReference::Reference(sref)
                         }
                         ResponseCompileResult::NewResponse((sref, resp, schemas)) => {
-                            responses.insert(sref.clone(), resp);
+                            response_bodies.insert(sref.clone(), resp);
                             chain.merge(schemas);
                             ResponseBodyOrReference::Reference(sref)
                         }
@@ -238,7 +229,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                                         ResponseBodyOrReference::Reference(sref)
                                     }
                                     ResponseCompileResult::NewResponse((sref, resp, schemas)) => {
-                                        responses.insert(sref.clone(), resp);
+                                        response_bodies.insert(sref.clone(), resp);
                                         chain.merge(schemas);
                                         ResponseBodyOrReference::Reference(sref)
                                     }
@@ -258,7 +249,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                         ))
                     })
                     .collect::<Result<indexmap::IndexMap<_, _>, _>>()?;
-                Ok(OperationResponses { default, codes })
+                Ok(Responses { default, codes })
             })
             .transpose()?;
 
@@ -271,11 +262,11 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                 header_params: self.compile_params_by_group(is_header_param)?,
                 cookie_params: self.compile_params_by_group(is_cookie_param)?,
                 request_body_or_ref,
-                request_responses,
+                request_responses: responses.unwrap_or_default(),
             },
             schemas: chain.done(),
             request_bodies,
-            responses,
+            response_bodies,
         })
     }
 
@@ -409,7 +400,7 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
                     .sref
                     .responses_sref()
                     .ok_or(Error::WrongResponseReference(self.path, r))?;
-                if self.responses.contains_key(&resp_sref) {
+                if self.response_bodies.contains_key(&resp_sref) {
                     // Already compiled:
                     Ok(ResponseCompileResult::ExistingResponse(resp_sref))
                 } else {
@@ -465,7 +456,7 @@ struct OpCompileResult<'a> {
     op: Operation<'a>,
     schemas: CompiledSchemas<'a>,
     request_bodies: CompiledBodies<'a>,
-    responses: CompiledResponses<'a>,
+    response_bodies: CompiledResponses<'a>,
 }
 
 fn is_query_param(p: &SchemaParameter) -> bool {
