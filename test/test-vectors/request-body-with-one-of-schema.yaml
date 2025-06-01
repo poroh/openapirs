@@ -1,0 +1,23 @@
+openapi: 3.0.1
+servers:
+  - url: https://example.com/v1
+info:
+  title: Example of request body with oneOf
+  version: 0.0.1
+paths:
+  /test:
+    post:
+      requestBody:
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - properties:
+                    prop1:
+                      type: string
+                  type: object
+                - properties:
+                    prop2:
+                      type: string
+                  type: object
+        required: true

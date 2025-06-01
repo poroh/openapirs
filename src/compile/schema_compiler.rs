@@ -4,6 +4,8 @@
 //
 
 use crate::compile::data_type::ActualType;
+use crate::compile::data_type::AllOfType;
+use crate::compile::data_type::AnyOfType;
 use crate::compile::data_type::CompiledArray;
 use crate::compile::data_type::CompiledObject;
 use crate::compile::data_type::CompiledType;
@@ -11,6 +13,7 @@ use crate::compile::data_type::DataType;
 use crate::compile::data_type::DataTypeWithSchema;
 use crate::compile::data_type::NormalCompiledType;
 use crate::compile::data_type::NullableCompiledType;
+use crate::compile::data_type::OneOfType;
 use crate::compile::data_type::TypeOrSchemaRef;
 use crate::compile::schema_chain::SchemaChain;
 use crate::compile::schema_chain::Schemas;
@@ -40,11 +43,13 @@ pub enum Error<'a> {
     PropertyCompilation(&'a PropertyName, Box<Error<'a>>),
     ReferenceError(crate::schema::sref::Error),
     MaxDepthReached(u32),
+    CompileReference(&'a Reference, Box<Error<'a>>),
     NoItemsInArray,
     ArrayItemCompilation(Box<Error<'a>>),
     ReferenceToUncompatibleObject(SRefSchemas),
     PropertiesNotFoundInReferencedObject(SRefSchemasObjectName),
     PropertyNotFoundInReferencedObject((SRefSchemasObjectName, PropertyName)),
+    NotImplemented(&'static str),
 }
 
 pub fn compile<'a, 'b>(
@@ -57,7 +62,8 @@ pub fn compile<'a, 'b>(
         return Err(Error::MaxDepthReached(depth));
     }
     match sdt {
-        SchemaDataType::Reference(r) => compile_ref(r, components, chain, depth),
+        SchemaDataType::Reference(r) => compile_ref(r, components, chain, depth)
+            .map_err(|err| Error::CompileReference(r, Box::new(err))),
         SchemaDataType::ActualType(at) => match &at.type_schema {
             MaybeNullableTypeSchema::Nullable(dt) => {
                 compile_nullable_actual_type(at, &dt.schema, components, chain, depth + 1)
@@ -67,16 +73,59 @@ pub fn compile<'a, 'b>(
                 compile_normal_object(obj, components, chain, depth + 1)
             }
             MaybeNullableTypeSchema::Array(_) => {
-                todo!()
+                Err(Error::NotImplemented("MaybeNullableTypeSchema::Array"))
             }
         },
-        SchemaDataType::OneOf(_) => todo!(),
-        SchemaDataType::AllOf(_) => todo!(),
-        SchemaDataType::AnyOf(_) => todo!(),
-        SchemaDataType::Empty(_) => {
-            todo!()
+        SchemaDataType::OneOf(oneof) => {
+            let mut chain = SchemaChain::new(chain);
+            let one_of = oneof
+                .one_of
+                .iter()
+                .map(|v| {
+                    let result = compile(v, components, &chain, depth + 1)?;
+                    chain.merge(result.schemas);
+                    Ok(result.type_or_ref)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(DataTypeWithSchema {
+                type_or_ref: TypeOrSchemaRef::DataType(DataType::OneOf(OneOfType { one_of })),
+                schemas: chain.done(),
+            })
         }
-        SchemaDataType::UnknownType(_) => todo!(),
+        SchemaDataType::AllOf(allof) => {
+            let mut chain = SchemaChain::new(chain);
+            let all_of = allof
+                .all_of
+                .iter()
+                .map(|v| {
+                    let result = compile(v, components, &chain, depth + 1)?;
+                    chain.merge(result.schemas);
+                    Ok(result.type_or_ref)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(DataTypeWithSchema {
+                type_or_ref: TypeOrSchemaRef::DataType(DataType::AllOf(AllOfType { all_of })),
+                schemas: chain.done(),
+            })
+        }
+        SchemaDataType::AnyOf(anyof) => {
+            let mut chain = SchemaChain::new(chain);
+            let any_of = anyof
+                .any_of
+                .iter()
+                .map(|v| {
+                    let result = compile(v, components, &chain, depth + 1)?;
+                    chain.merge(result.schemas);
+                    Ok(result.type_or_ref)
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(DataTypeWithSchema {
+                type_or_ref: TypeOrSchemaRef::DataType(DataType::AnyOf(AnyOfType { any_of })),
+                schemas: chain.done(),
+            })
+        }
+        SchemaDataType::Empty(_) => Err(Error::NotImplemented("SchemaDataType::Empty")),
+        SchemaDataType::UnknownType(_) => Err(Error::NotImplemented("SchemaDataType::UnknownType")),
     }
 }
 
@@ -178,9 +227,7 @@ pub fn compile_nullable_actual_type<'a, 'b>(
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     Ok(match dt {
-        NullableTypeSchema::Null => {
-            todo!()
-        }
+        NullableTypeSchema::Null => Err(Error::NotImplemented("NullableTypeSchema::Null"))?,
         NullableTypeSchema::Boolean(v) => DataTypeWithSchema::actual_type(
             at,
             CompiledType::Nullable(NullableCompiledType::Boolean(v)),
@@ -214,9 +261,7 @@ pub fn compile_normal_actual_type<'a>(
             readonly: at.readonly,
             writeonly: at.writeonly,
             compiled_type: match dt {
-                TypeSchema::Null => {
-                    todo!()
-                }
+                TypeSchema::Null => Err(Error::NotImplemented("TypeSchema::Null"))?,
                 TypeSchema::Boolean(v) => CompiledType::Normal(NormalCompiledType::Boolean(v)),
                 TypeSchema::Integer(v) => CompiledType::Normal(NormalCompiledType::Integer(v)),
                 TypeSchema::String(v) => CompiledType::Normal(NormalCompiledType::String(v)),

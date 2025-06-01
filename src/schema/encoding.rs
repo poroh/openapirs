@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct Encoding {
+    #[serde(rename = "contentType")]
     pub content_type: Option<ContentType>,
     pub headers: Option<indexmap::IndexMap<HeaderName, Header>>,
 }

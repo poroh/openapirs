@@ -32,17 +32,17 @@ pub enum TypeOrSchemaRef<'a> {
 
 #[derive(Debug)]
 pub struct OneOfType<'a> {
-    pub one_of: Vec<DataType<'a>>,
+    pub one_of: Vec<TypeOrSchemaRef<'a>>,
 }
 
 #[derive(Debug)]
 pub struct AllOfType<'a> {
-    pub all_of: Vec<DataType<'a>>,
+    pub all_of: Vec<TypeOrSchemaRef<'a>>,
 }
 
 #[derive(Debug)]
 pub struct AnyOfType<'a> {
-    pub any_of: Vec<DataType<'a>>,
+    pub any_of: Vec<TypeOrSchemaRef<'a>>,
 }
 
 #[derive(Debug)]

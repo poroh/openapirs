@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct Discriminator {
+    #[serde(rename = "propertyName")]
     pub property_name: PropertyName,
     pub mapping: Option<indexmap::IndexMap<PropertyStringValue, SRef>>,
 }

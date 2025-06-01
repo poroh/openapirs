@@ -25,10 +25,10 @@ use serde::Deserialize;
 #[serde(untagged)]
 pub enum DataType {
     Reference(Reference),
-    ActualType(Box<ActualType>),
     OneOf(OneOfType),
     AllOf(AllOfType),
     AnyOf(AnyOfType),
+    ActualType(Box<ActualType>),
     Empty(EmptyType),
     UnknownType(UnknownType),
 }
