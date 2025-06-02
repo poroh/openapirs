@@ -47,7 +47,7 @@ pub fn compile(d: &schema::Description) -> CResult<Compiled> {
                 .map(|(path, item)| -> CResult<Vec<Operation>> {
                     item.operations_iter()
                         .map(|(op_type, op)| {
-                            let cdata = operation::OpCompileData {
+                            let cdata = operation::CompileData {
                                 path,
                                 item,
                                 op,

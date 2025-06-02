@@ -33,18 +33,6 @@ pub enum Error<'a> {
     WrongReference(&'a SchemaReference),
 }
 
-pub fn compile_json<'a, 'b>(
-    body: &'a SchemaRequestBody,
-    components: Option<&'a Components>,
-    chain: &'b SchemaChain<'a, 'b>,
-) -> Result<Option<DataTypeWithSchema<'a>>, SchemaCompileError<'a>> {
-    body.content
-        .get("application/json")
-        .and_then(|json| json.schema.as_ref())
-        .map(|json_schema| schema_compiler::compile(json_schema, components, chain, 0))
-        .transpose()
-}
-
 pub struct CompileData<'a, 'b> {
     pub components: &'a Option<Components>,
     pub schema_chain: &'b SchemaChain<'a, 'b>,
@@ -119,4 +107,16 @@ pub fn compile_body<'a, 'b>(
             }
         }
     }
+}
+
+fn compile_json<'a, 'b>(
+    body: &'a SchemaRequestBody,
+    components: Option<&'a Components>,
+    chain: &'b SchemaChain<'a, 'b>,
+) -> Result<Option<DataTypeWithSchema<'a>>, SchemaCompileError<'a>> {
+    body.content
+        .get("application/json")
+        .and_then(|json| json.schema.as_ref())
+        .map(|json_schema| schema_compiler::compile(json_schema, components, chain, 0))
+        .transpose()
 }

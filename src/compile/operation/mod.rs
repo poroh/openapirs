@@ -9,7 +9,6 @@ pub mod response_body;
 
 use crate::compile::schema_chain::SchemaChain;
 use crate::compile::schema_chain::Schemas;
-use crate::compile::schema_compiler;
 use crate::compile::RequestBodies;
 use crate::compile::ResponseBodies;
 use crate::schema::components::Components;
@@ -17,8 +16,6 @@ use crate::schema::http_status_code::HttpStatusCode;
 use crate::schema::operation::Operation as SchemaOperation;
 use crate::schema::parameter::Name as SchemaParameterName;
 use crate::schema::parameter::Parameter as SchemaParameter;
-use crate::schema::parameter::ParameterOrReference;
-use crate::schema::parameter::Place as SchemaParameterPlace;
 use crate::schema::path::Path;
 use crate::schema::path::PathParseError;
 use crate::schema::path_item::OperationType;
@@ -32,7 +29,6 @@ use request_body::RequestBodyOrReference;
 use response_body::CompileResult as ResponseCompileResult;
 use response_body::ResponseBodyOrReference;
 use std::collections::HashMap;
-use std::collections::HashSet;
 
 #[derive(Debug)]
 pub struct Operation<'a> {
@@ -54,14 +50,14 @@ pub struct Responses<'a> {
 
 #[derive(Debug)]
 pub enum Error<'a> {
-    PathParseError(PathParseError),
-    ParameterNotDefined(&'a Path, SchemaParameterName),
-    NotDefinedAsPathParameter(&'a Path, SchemaParameterName),
+    PathParameter(&'a Path, SchemaParameterName, parameter::Error<'a>),
+    QueryParameter(&'a Path, parameter::Error<'a>),
+    HeaderParameter(&'a Path, parameter::Error<'a>),
+    CookieParameter(&'a Path, parameter::Error<'a>),
+    PathParseError(&'a Path, PathParseError),
     RequestBodyCompile(&'a Path, &'static OperationType, request_body::Error<'a>),
     ResponseBodyCompile(&'a Path, &'static OperationType, response_body::Error<'a>),
     WrongParameterReference(&'a Path, &'a SchemaReference),
-    WrongResponseReference(&'a Path, &'a SchemaReference),
-    ResponseCompilation(&'a Path, &'static OperationType, schema_compiler::Error<'a>),
     ResponseCodeCompilation(
         &'a Path,
         &'static OperationType,
@@ -70,14 +66,14 @@ pub enum Error<'a> {
     ),
 }
 
-pub struct OpCompileResult<'a> {
+pub struct CompileResult<'a> {
     pub op: Operation<'a>,
     pub schemas: Schemas<'a>,
     pub request_bodies: RequestBodies<'a>,
     pub response_bodies: ResponseBodies<'a>,
 }
 
-pub struct OpCompileData<'a, 'b> {
+pub struct CompileData<'a, 'b> {
     pub path: &'a Path,
     pub item: &'a PathItem,
     pub op: &'a SchemaOperation,
@@ -87,60 +83,30 @@ pub struct OpCompileData<'a, 'b> {
     pub response_bodies: &'b ResponseBodies<'a>,
 }
 
-impl<'a, 'b> OpCompileData<'a, 'b> {
-    fn find_param_by_ref(&self, r: &SchemaReference) -> Option<&'a SchemaParameter> {
-        r.sref.parameter_sref().as_ref().and_then(|sref| {
-            self.components
-                .as_ref()
-                .and_then(|c| c.find_parameter(sref))
-        })
-    }
-
-    fn resolve_path_parameter(&self, pname: &SchemaParameterName) -> Option<&'a SchemaParameter> {
-        let find_param = |ps: &'a Vec<ParameterOrReference>| {
-            for p in ps.iter() {
-                let candidate = match p {
-                    ParameterOrReference::Parameter(p) => Some(p),
-                    ParameterOrReference::Reference(r) => self.find_param_by_ref(r),
-                };
-                if let Some(candidate) = candidate {
-                    if &candidate.name == pname {
-                        return Some(candidate);
-                    }
-                }
-            }
-            None
-        };
-        // Find parameter inside operation and after for whole path
-        self.op
-            .parameters
-            .as_ref()
-            .and_then(find_param)
-            .or_else(|| self.item.parameters.as_ref().and_then(find_param))
-    }
-
+impl<'a, 'b> CompileData<'a, 'b> {
     pub fn compile_operation(
         &self,
         op_type: &'static OperationType,
-    ) -> Result<OpCompileResult<'a>, Error<'a>> {
+    ) -> Result<CompileResult<'a>, Error<'a>> {
         let mut chain = SchemaChain::new(self.schema_chain);
         let mut request_bodies = RequestBodies::default();
         let mut response_bodies = ResponseBodies::default();
 
+        let parameter_compile = parameter::CompileData {
+            op_parameters: &self.op.parameters,
+            item_parameters: &self.item.parameters,
+            components: self.components,
+        };
         let path_params = self
             .path
             .path_params_iter()
             .map(|pname| {
                 let name = pname
-                    .map_err(Error::PathParseError)
+                    .map_err(|err| Error::PathParseError(self.path, err))
                     .map(|v| SchemaParameterName::new(v.into()))?;
-                self.resolve_path_parameter(&name)
-                    .ok_or(Error::ParameterNotDefined(self.path, name.clone()))
-                    .and_then(|p| match p.place {
-                        SchemaParameterPlace::Path(_) => Ok(p),
-                        _ => Err(Error::NotDefinedAsPathParameter(self.path, name)),
-                    })
-                    .map(|v| (&v.name, Parameter { schema_param: v }))
+                parameter_compile
+                    .compile_path_parameter(&name)
+                    .map_err(|err| Error::PathParameter(self.path, name.clone(), err))
             })
             .collect::<Result<HashMap<_, _>, _>>()?;
 
@@ -186,14 +152,20 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             })
             .transpose()?;
 
-        Ok(OpCompileResult {
+        Ok(CompileResult {
             op: Operation {
                 op_type,
                 path: self.path,
                 path_params,
-                query_params: self.compile_params_by_group(SchemaParameter::is_query)?,
-                header_params: self.compile_params_by_group(SchemaParameter::is_header)?,
-                cookie_params: self.compile_params_by_group(SchemaParameter::is_cookie)?,
+                query_params: parameter_compile
+                    .compile_params_by_group(SchemaParameter::is_query)
+                    .map_err(|err| Error::QueryParameter(self.path, err))?,
+                header_params: parameter_compile
+                    .compile_params_by_group(SchemaParameter::is_header)
+                    .map_err(|err| Error::HeaderParameter(self.path, err))?,
+                cookie_params: parameter_compile
+                    .compile_params_by_group(SchemaParameter::is_cookie)
+                    .map_err(|err| Error::CookieParameter(self.path, err))?,
                 request_body_or_ref,
                 request_responses: responses.unwrap_or_default(),
             },
@@ -201,57 +173,6 @@ impl<'a, 'b> OpCompileData<'a, 'b> {
             request_bodies,
             response_bodies,
         })
-    }
-
-    fn compile_params_by_group(
-        &self,
-        filter: fn(&SchemaParameter) -> bool,
-    ) -> Result<Vec<Parameter<'a>>, Error<'a>> {
-        let resolve_param = |p: &'a ParameterOrReference| match p {
-            ParameterOrReference::Parameter(p) => Ok(p),
-            ParameterOrReference::Reference(r) => self
-                .find_param_by_ref(r)
-                .ok_or(Error::WrongParameterReference(self.path, r)),
-        };
-        let filter_or_err = |v: &Result<&'a SchemaParameter, _>| match v {
-            Ok(p) => filter(p),
-            Err(_) => true,
-        };
-        let op_params = self
-            .op
-            .parameters
-            .as_ref()
-            .map(|vec| {
-                vec.iter()
-                    .map(resolve_param)
-                    .filter(filter_or_err)
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .unwrap_or(Ok(vec![]))?;
-
-        // Append all parameters from path that are not overriden by operation.
-        let all_names = op_params.iter().map(|p| &p.name).collect::<HashSet<_>>();
-        let path_params = self
-            .item
-            .parameters
-            .as_ref()
-            .map(|vec| {
-                vec.iter()
-                    .map(resolve_param)
-                    .filter(filter_or_err)
-                    .filter(|v: &Result<&'a SchemaParameter, _>| match v {
-                        Err(_) => true,
-                        Ok(SchemaParameter { ref name, .. }) => !all_names.contains(&name),
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .unwrap_or(Ok(vec![]))?;
-
-        Ok([op_params, path_params]
-            .concat()
-            .into_iter()
-            .map(|p| Parameter { schema_param: p })
-            .collect::<Vec<_>>())
     }
 
     fn compile_body(

@@ -27,19 +27,6 @@ pub enum ResponseBodyOrReference<'a> {
     Reference(SRefResponsesName),
 }
 
-pub fn compile_json<'a, 'b>(
-    resp: &'a SchemaResponse,
-    components: Option<&'a Components>,
-    chain: &'b SchemaChain<'a, 'b>,
-) -> Result<Option<DataTypeWithSchema<'a>>, SchemaCompileError<'a>> {
-    resp.content
-        .as_ref()
-        .and_then(|content| content.get("application/json"))
-        .and_then(|json| json.schema.as_ref())
-        .map(|json_schema| schema_compiler::compile(json_schema, components, chain, 0))
-        .transpose()
-}
-
 pub struct CompileData<'a, 'b> {
     pub components: &'a Option<Components>,
     pub schema_chain: &'b SchemaChain<'a, 'b>,
@@ -120,4 +107,17 @@ pub fn compile_response<'a, 'b>(
             }
         }
     }
+}
+
+fn compile_json<'a, 'b>(
+    resp: &'a SchemaResponse,
+    components: Option<&'a Components>,
+    chain: &'b SchemaChain<'a, 'b>,
+) -> Result<Option<DataTypeWithSchema<'a>>, SchemaCompileError<'a>> {
+    resp.content
+        .as_ref()
+        .and_then(|content| content.get("application/json"))
+        .and_then(|json| json.schema.as_ref())
+        .map(|json_schema| schema_compiler::compile(json_schema, components, chain, 0))
+        .transpose()
 }
