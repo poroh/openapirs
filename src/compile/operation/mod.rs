@@ -7,10 +7,10 @@ pub mod parameter;
 pub mod request_body;
 pub mod response_body;
 
-use crate::compile::schema_chain::SchemaChain;
-use crate::compile::schema_chain::Schemas;
+use crate::compile::stack::Stack;
 use crate::compile::RequestBodies;
 use crate::compile::ResponseBodies;
+use crate::compile::Schemas;
 use crate::schema::components::Components;
 use crate::schema::http_status_code::HttpStatusCode;
 use crate::schema::operation::Operation as SchemaOperation;
@@ -78,7 +78,7 @@ pub struct CompileData<'a, 'b> {
     pub item: &'a PathItem,
     pub op: &'a SchemaOperation,
     pub components: &'a Option<Components>,
-    pub schema_chain: &'b SchemaChain<'a, 'b>,
+    pub schema_chain: &'b Stack<'a, 'b>,
     pub request_bodies: &'b RequestBodies<'a>,
     pub response_bodies: &'b ResponseBodies<'a>,
 }
@@ -88,7 +88,7 @@ impl<'a, 'b> CompileData<'a, 'b> {
         &self,
         op_type: &'static OperationType,
     ) -> Result<CompileResult<'a>, Error<'a>> {
-        let mut chain = SchemaChain::new(self.schema_chain);
+        let mut chain = Stack::new(self.schema_chain);
         let mut request_bodies = RequestBodies::default();
         let mut response_bodies = ResponseBodies::default();
 

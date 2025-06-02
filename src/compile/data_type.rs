@@ -4,7 +4,7 @@
 // with all required schemas with it.
 //
 
-use crate::compile::schema_chain::Schemas;
+use crate::compile::Schemas;
 use crate::schema::data_type::default::NonNullableDefault;
 use crate::schema::data_type::default::NullableDefault;
 use crate::schema::data_type::numerical;

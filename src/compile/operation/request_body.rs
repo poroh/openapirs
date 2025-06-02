@@ -5,11 +5,11 @@
 
 use crate::compile::data_type::DataTypeWithSchema;
 use crate::compile::data_type::TypeOrSchemaRef;
-use crate::compile::schema_chain::SchemaChain;
-use crate::compile::schema_chain::Schemas;
 use crate::compile::schema_compiler;
 use crate::compile::schema_compiler::Error as SchemaCompileError;
+use crate::compile::stack::Stack;
 use crate::compile::RequestBodies;
+use crate::compile::Schemas;
 use crate::schema::components::Components;
 use crate::schema::reference::Reference as SchemaReference;
 use crate::schema::request_body::RequestBody as SchemaRequestBody;
@@ -35,7 +35,7 @@ pub enum Error<'a> {
 
 pub struct CompileData<'a, 'b> {
     pub components: &'a Option<Components>,
-    pub schema_chain: &'b SchemaChain<'a, 'b>,
+    pub schema_chain: &'b Stack<'a, 'b>,
     pub request_bodies: &'b RequestBodies<'a>,
 }
 
@@ -52,7 +52,7 @@ impl<'a> CompileResult<'a> {
     pub fn aggregate<'b>(
         self,
         request_bodies: &mut RequestBodies<'a>,
-        chain: &mut SchemaChain<'a, 'b>,
+        chain: &mut Stack<'a, 'b>,
     ) -> RequestBodyOrReference<'a> {
         match self {
             CompileResult::Existing(sref) => RequestBodyOrReference::Reference(sref),
@@ -75,7 +75,7 @@ pub fn compile_body<'a, 'b>(
 ) -> Result<CompileResult<'a>, Error<'a>> {
     match sbody {
         SchemaRequestBodyOrReference::RequestBody(b) => {
-            let mut chain = SchemaChain::new(data.schema_chain);
+            let mut chain = Stack::new(data.schema_chain);
             let json_type_or_ref = compile_json(b, data.components.as_ref(), &chain)
                 .map_err(Error::JsonCompile)?
                 .map(|v| {
@@ -91,7 +91,7 @@ pub fn compile_body<'a, 'b>(
                 // Already compiled:
                 Ok(CompileResult::Existing(body_sref))
             } else {
-                let mut chain = SchemaChain::new(data.schema_chain);
+                let mut chain = Stack::new(data.schema_chain);
                 let components = data.components.as_ref().ok_or(Error::WrongReference(r))?;
                 let body_schema = components
                     .find_request_body(&body_sref)
@@ -112,7 +112,7 @@ pub fn compile_body<'a, 'b>(
 fn compile_json<'a, 'b>(
     body: &'a SchemaRequestBody,
     components: Option<&'a Components>,
-    chain: &'b SchemaChain<'a, 'b>,
+    chain: &'b Stack<'a, 'b>,
 ) -> Result<Option<DataTypeWithSchema<'a>>, SchemaCompileError<'a>> {
     body.content
         .get("application/json")

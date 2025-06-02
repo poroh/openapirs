@@ -15,8 +15,8 @@ use crate::compile::data_type::NormalCompiledType;
 use crate::compile::data_type::NullableCompiledType;
 use crate::compile::data_type::OneOfType;
 use crate::compile::data_type::TypeOrSchemaRef;
-use crate::compile::schema_chain::SchemaChain;
-use crate::compile::schema_chain::Schemas;
+use crate::compile::stack::Stack;
+use crate::compile::Schemas;
 use crate::schema::components::Components;
 use crate::schema::data_type::array::Array as SchemaArray;
 use crate::schema::data_type::object::Object as SchemaObject;
@@ -55,73 +55,73 @@ pub enum Error<'a> {
 pub fn compile<'a, 'b>(
     sdt: &'a SchemaDataType,
     components: Option<&'a Components>,
-    chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     if depth > MAX_DEPTH {
         return Err(Error::MaxDepthReached(depth));
     }
     match sdt {
-        SchemaDataType::Reference(r) => compile_ref(r, components, chain, depth)
+        SchemaDataType::Reference(r) => compile_ref(r, components, parent_stack, depth)
             .map_err(|err| Error::CompileReference(r, Box::new(err))),
         SchemaDataType::ActualType(at) => match &at.type_schema {
             MaybeNullableTypeSchema::Nullable(dt) => {
-                compile_nullable_actual_type(at, &dt.schema, components, chain, depth + 1)
+                compile_nullable_actual_type(at, &dt.schema, components, parent_stack, depth + 1)
             }
             MaybeNullableTypeSchema::Normal(dt) => compile_normal_actual_type(at, dt),
             MaybeNullableTypeSchema::Object(obj) => {
-                compile_normal_object(obj, components, chain, depth + 1)
+                compile_normal_object(obj, components, parent_stack, depth + 1)
             }
             MaybeNullableTypeSchema::Array(_) => {
                 Err(Error::NotImplemented("MaybeNullableTypeSchema::Array"))
             }
         },
         SchemaDataType::OneOf(oneof) => {
-            let mut chain = SchemaChain::new(chain);
+            let mut stack = Stack::new(parent_stack);
             let one_of = oneof
                 .one_of
                 .iter()
                 .map(|v| {
-                    let result = compile(v, components, &chain, depth + 1)?;
-                    chain.merge(result.schemas);
+                    let result = compile(v, components, &stack, depth + 1)?;
+                    stack.merge(result.schemas);
                     Ok(result.type_or_ref)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(DataTypeWithSchema {
                 type_or_ref: TypeOrSchemaRef::DataType(DataType::OneOf(OneOfType { one_of })),
-                schemas: chain.done(),
+                schemas: stack.done(),
             })
         }
         SchemaDataType::AllOf(allof) => {
-            let mut chain = SchemaChain::new(chain);
+            let mut stack = Stack::new(parent_stack);
             let all_of = allof
                 .all_of
                 .iter()
                 .map(|v| {
-                    let result = compile(v, components, &chain, depth + 1)?;
-                    chain.merge(result.schemas);
+                    let result = compile(v, components, &stack, depth + 1)?;
+                    stack.merge(result.schemas);
                     Ok(result.type_or_ref)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(DataTypeWithSchema {
                 type_or_ref: TypeOrSchemaRef::DataType(DataType::AllOf(AllOfType { all_of })),
-                schemas: chain.done(),
+                schemas: stack.done(),
             })
         }
         SchemaDataType::AnyOf(anyof) => {
-            let mut chain = SchemaChain::new(chain);
+            let mut stack = Stack::new(parent_stack);
             let any_of = anyof
                 .any_of
                 .iter()
                 .map(|v| {
-                    let result = compile(v, components, &chain, depth + 1)?;
-                    chain.merge(result.schemas);
+                    let result = compile(v, components, &stack, depth + 1)?;
+                    stack.merge(result.schemas);
                     Ok(result.type_or_ref)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(DataTypeWithSchema {
                 type_or_ref: TypeOrSchemaRef::DataType(DataType::AnyOf(AnyOfType { any_of })),
-                schemas: chain.done(),
+                schemas: stack.done(),
             })
         }
         SchemaDataType::Empty(_) => Err(Error::NotImplemented("SchemaDataType::Empty")),
@@ -132,7 +132,7 @@ pub fn compile<'a, 'b>(
 pub fn compile_ref<'a, 'b>(
     r: &'a Reference,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     let schemas_ref = r
@@ -142,8 +142,8 @@ pub fn compile_ref<'a, 'b>(
         .ok_or(Error::UnexpecetedReferenceType(&r.sref))?;
     match schemas_ref {
         SRefSchemas::Normal(schemas_name) => {
-            let chain = SchemaChain::new_ref(parent_chain, &schemas_name);
-            if chain.contains(&schemas_name) {
+            let stack = Stack::new_ref(parent_stack, &schemas_name);
+            if stack.contains(&schemas_name) {
                 // If schema has been already compiled just refer to it
                 Ok(DataTypeWithSchema {
                     type_or_ref: TypeOrSchemaRef::Reference(schemas_name),
@@ -155,7 +155,7 @@ pub fn compile_ref<'a, 'b>(
                     .ok_or(Error::SchemasNotDefinedButReferenced)?
                     .find_schema_by_name(&schemas_name)
                     .ok_or(Error::SchemaRefernceNotFound(schemas_name.clone()))?;
-                let compiled_schema = compile(schema, components, &chain, depth + 1)
+                let compiled_schema = compile(schema, components, &stack, depth + 1)
                     .map_err(|err| Error::SchemaCompilation(schemas_name.clone(), Box::new(err)))?;
                 match compiled_schema.type_or_ref {
                     TypeOrSchemaRef::DataType(dt) => Ok(DataTypeWithSchema {
@@ -210,8 +210,8 @@ pub fn compile_ref<'a, 'b>(
                                     pname.clone(),
                                 )))
                         })?;
-                    let chain = SchemaChain::new_ref(parent_chain, schemas_name);
-                    compile(dt, components, &chain, depth + 1)
+                    let stack = Stack::new_ref(parent_stack, schemas_name);
+                    compile(dt, components, &stack, depth + 1)
                 }
                 _ => Err(Error::ReferenceToUncompatibleObject(schemas_ref)),
             }
@@ -223,7 +223,7 @@ pub fn compile_nullable_actual_type<'a, 'b>(
     at: &'a SchemaActualType,
     dt: &'a NullableTypeSchema,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
     Ok(match dt {
@@ -245,9 +245,9 @@ pub fn compile_nullable_actual_type<'a, 'b>(
             CompiledType::Nullable(NullableCompiledType::Number(v)),
         ),
         NullableTypeSchema::Object(v) => {
-            compile_nullable_object(v, components, parent_chain, depth)?
+            compile_nullable_object(v, components, parent_stack, depth)?
         }
-        NullableTypeSchema::Array(v) => compile_nullable_array(v, components, parent_chain, depth)?,
+        NullableTypeSchema::Array(v) => compile_nullable_array(v, components, parent_stack, depth)?,
     })
 }
 
@@ -274,31 +274,31 @@ pub fn compile_normal_actual_type<'a>(
 fn compile_object<'a, 'b>(
     sobj: &'a SchemaObject,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<(CompiledObject<'a>, Schemas<'a>), Error<'a>> {
     let mut result = CompiledObject::default();
-    let mut chain = SchemaChain::new(parent_chain);
+    let mut stack = Stack::new(parent_stack);
     if let Some(properties) = sobj.properties.as_ref() {
         for (propname, sprop) in properties.iter() {
-            let cresult = compile(sprop, components, &chain, depth + 1)
+            let cresult = compile(sprop, components, &stack, depth + 1)
                 .map_err(|err| Error::PropertyCompilation(propname, Box::new(err)))?;
-            chain.merge(cresult.schemas);
+            stack.merge(cresult.schemas);
             result
                 .properties
                 .insert(propname.clone(), cresult.type_or_ref);
         }
     }
-    Ok((result, chain.done()))
+    Ok((result, stack.done()))
 }
 
 pub fn compile_normal_object<'a, 'b>(
     sobj: &'a SchemaObject,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
-    let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
+    let (obj, schemas) = compile_object(sobj, components, parent_stack, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
         type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
@@ -312,10 +312,10 @@ pub fn compile_normal_object<'a, 'b>(
 pub fn compile_nullable_object<'a, 'b>(
     sobj: &'a SchemaObject,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
-    let (obj, schemas) = compile_object(sobj, components, parent_chain, depth)?;
+    let (obj, schemas) = compile_object(sobj, components, parent_stack, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
         type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {
@@ -329,29 +329,29 @@ pub fn compile_nullable_object<'a, 'b>(
 fn compile_array<'a, 'b>(
     sarr: &'a SchemaArray,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<(CompiledArray<'a>, Schemas<'a>), Error<'a>> {
-    let mut chain = SchemaChain::new(parent_chain);
+    let mut stack = Stack::new(parent_stack);
     let sitems = sarr.items.as_ref().ok_or(Error::NoItemsInArray)?;
-    let cresult = compile(sitems, components, &chain, depth + 1)
+    let cresult = compile(sitems, components, &stack, depth + 1)
         .map_err(|err| Error::ArrayItemCompilation(Box::new(err)))?;
-    chain.merge(cresult.schemas);
+    stack.merge(cresult.schemas);
     Ok((
         CompiledArray {
             items: Box::new(cresult.type_or_ref),
         },
-        chain.done(),
+        stack.done(),
     ))
 }
 
 pub fn compile_nullable_array<'a, 'b>(
     sarr: &'a SchemaArray,
     components: Option<&'a Components>,
-    parent_chain: &'b SchemaChain<'a, 'b>,
+    parent_stack: &'b Stack<'a, 'b>,
     depth: u32,
 ) -> Result<DataTypeWithSchema<'a>, Error<'a>> {
-    let (arr, schemas) = compile_array(sarr, components, parent_chain, depth)?;
+    let (arr, schemas) = compile_array(sarr, components, parent_stack, depth)?;
     Ok(DataTypeWithSchema {
         schemas,
         type_or_ref: TypeOrSchemaRef::DataType(DataType::ActualType(ActualType {

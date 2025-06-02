@@ -5,11 +5,11 @@
 
 use crate::compile::data_type::DataTypeWithSchema;
 use crate::compile::data_type::TypeOrSchemaRef;
-use crate::compile::schema_chain::SchemaChain;
-use crate::compile::schema_chain::Schemas;
 use crate::compile::schema_compiler;
 use crate::compile::schema_compiler::Error as SchemaCompileError;
+use crate::compile::stack::Stack;
 use crate::compile::ResponseBodies;
+use crate::compile::Schemas;
 use crate::schema::components::Components;
 use crate::schema::reference::Reference as SchemaReference;
 use crate::schema::response::Response as SchemaResponse;
@@ -29,7 +29,7 @@ pub enum ResponseBodyOrReference<'a> {
 
 pub struct CompileData<'a, 'b> {
     pub components: &'a Option<Components>,
-    pub schema_chain: &'b SchemaChain<'a, 'b>,
+    pub schema_chain: &'b Stack<'a, 'b>,
     pub response_bodies: &'b ResponseBodies<'a>,
 }
 
@@ -46,7 +46,7 @@ impl<'a> CompileResult<'a> {
     pub fn aggregate<'b>(
         self,
         response_bodies: &mut ResponseBodies<'a>,
-        chain: &mut SchemaChain<'a, 'b>,
+        chain: &mut Stack<'a, 'b>,
     ) -> ResponseBodyOrReference<'a> {
         match self {
             CompileResult::Existing(sref) => ResponseBodyOrReference::Reference(sref),
@@ -75,7 +75,7 @@ pub fn compile_response<'a, 'b>(
 ) -> Result<CompileResult<'a>, Error<'a>> {
     match sresp {
         SchemaResponseOrReference::Response(b) => {
-            let mut chain = SchemaChain::new(cdata.schema_chain);
+            let mut chain = Stack::new(cdata.schema_chain);
             let json_type_or_ref = compile_json(b, cdata.components.as_ref(), &chain)
                 .map_err(Error::JsonCompile)?
                 .map(|v| {
@@ -91,7 +91,7 @@ pub fn compile_response<'a, 'b>(
                 // Already compiled:
                 Ok(CompileResult::Existing(resp_sref))
             } else {
-                let mut chain = SchemaChain::new(cdata.schema_chain);
+                let mut chain = Stack::new(cdata.schema_chain);
                 let components = cdata.components.as_ref().ok_or(Error::WrongReference(r))?;
                 let resp_schema = components
                     .find_response(&resp_sref)
@@ -112,7 +112,7 @@ pub fn compile_response<'a, 'b>(
 fn compile_json<'a, 'b>(
     resp: &'a SchemaResponse,
     components: Option<&'a Components>,
-    chain: &'b SchemaChain<'a, 'b>,
+    chain: &'b Stack<'a, 'b>,
 ) -> Result<Option<DataTypeWithSchema<'a>>, SchemaCompileError<'a>> {
     resp.content
         .as_ref()

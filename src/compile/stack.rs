@@ -8,22 +8,20 @@
 // everything that is compiled on previous stages.
 //
 
-use crate::compile::data_type::DataType;
+use crate::compile::Schemas;
 use crate::schema::sref::SRefSchemasObjectName;
-
-pub type Schemas<'a> = indexmap::IndexMap<SRefSchemasObjectName, DataType<'a>>;
 
 // Lifetime 'a is lifetime of parsed schema object.
 // Lifetime 'b is lifetime of schemas.
 #[derive(Default)]
-pub struct SchemaChain<'a, 'b> {
+pub struct Stack<'a, 'b> {
     pub sref: Option<&'b SRefSchemasObjectName>,
-    pub parent: Option<&'b SchemaChain<'a, 'b>>,
+    pub parent: Option<&'b Stack<'a, 'b>>,
     pub current: Schemas<'a>,
 }
 
-impl<'a, 'b> SchemaChain<'a, 'b> {
-    pub fn new(parent: &'b SchemaChain<'a, 'b>) -> Self {
+impl<'a, 'b> Stack<'a, 'b> {
+    pub fn new(parent: &'b Stack<'a, 'b>) -> Self {
         Self {
             sref: None,
             parent: Some(parent),
@@ -31,7 +29,7 @@ impl<'a, 'b> SchemaChain<'a, 'b> {
         }
     }
 
-    pub fn new_ref(parent: &'b SchemaChain<'a, 'b>, sref: &'b SRefSchemasObjectName) -> Self {
+    pub fn new_ref(parent: &'b Stack<'a, 'b>, sref: &'b SRefSchemasObjectName) -> Self {
         Self {
             sref: Some(sref),
             parent: Some(parent),

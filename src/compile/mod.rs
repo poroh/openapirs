@@ -9,20 +9,22 @@
 
 pub mod data_type;
 pub mod operation;
-pub mod schema_chain;
 pub mod schema_compiler;
+pub mod stack;
 
+use crate::compile::data_type::DataType;
 use crate::compile::operation::request_body::RequestBody;
 use crate::compile::operation::response_body::ResponseBody;
 use crate::compile::operation::Operation;
-use crate::compile::schema_chain::SchemaChain;
-use crate::compile::schema_chain::Schemas;
+use crate::compile::stack::Stack;
 use crate::schema;
 use crate::schema::sref::SRefRequestBody;
 use crate::schema::sref::SRefResponsesName;
+use crate::schema::sref::SRefSchemasObjectName;
 
 pub type RequestBodies<'a> = indexmap::IndexMap<SRefRequestBody, RequestBody<'a>>;
 pub type ResponseBodies<'a> = indexmap::IndexMap<SRefResponsesName, ResponseBody<'a>>;
+pub type Schemas<'a> = indexmap::IndexMap<SRefSchemasObjectName, DataType<'a>>;
 
 #[derive(Debug)]
 pub struct Compiled<'a> {
@@ -35,7 +37,7 @@ pub struct Compiled<'a> {
 type CResult<'a, T> = Result<T, operation::Error<'a>>;
 
 pub fn compile(d: &schema::Description) -> CResult<Compiled> {
-    let mut schema_chain = SchemaChain::default();
+    let mut schema_chain = Stack::default();
     let mut request_bodies = RequestBodies::default();
     let mut response_bodies = ResponseBodies::default();
     let operations = d
