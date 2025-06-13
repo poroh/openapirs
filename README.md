@@ -2,8 +2,9 @@
 
 Work in progress!
 
-Input: openapi.yaml and set of paths / methods to be compiled
-Output: well-formed structures for serde serialization / deserialization of
+**Input**: openapi.yaml and set of paths / methods to be compiled
+
+**Output**: well-formed structures for serde serialization / deserialization of
   request / response bodies and URL / Headers serialization.
 
 ## Motivation
