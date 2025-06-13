@@ -4,5 +4,6 @@
 //
 
 pub mod compile;
+pub mod model;
 pub mod schema;
 pub mod typing;
