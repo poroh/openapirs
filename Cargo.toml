@@ -15,6 +15,10 @@ path = "test/test-parse.rs"
 name = "test-compile"
 path = "test/test-compile.rs"
 
+[[bin]]
+name = "test-model"
+path = "test/test-model.rs"
+
 [dependencies]
 serde = { version = "1", features = [ "derive"] }
 serde_with = { version = "3", default-features = false}

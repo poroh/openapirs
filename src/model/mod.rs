@@ -21,15 +21,18 @@ use crate::schema::data_type::StringType;
 use crate::schema::PropertyName;
 use name::Name;
 
+#[derive(Debug)]
 pub enum Model<'a> {
     Object(Object<'a>),
     Enum(Enum<'a>),
 }
 
+#[derive(Debug)]
 pub struct Object<'a> {
     pub properties: Vec<(&'a PropertyName, PropertyType<'a>)>,
 }
 
+#[derive(Debug)]
 pub struct Enum<'a> {
     pub members: Vec<Name<'a>>,
 }
