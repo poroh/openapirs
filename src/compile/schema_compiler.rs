@@ -143,7 +143,7 @@ pub fn compile_ref<'a, 'b>(
     match schemas_ref {
         SRefSchemas::Normal(schemas_name) => {
             let stack = Stack::new_ref(parent_stack, &schemas_name);
-            if stack.contains(&schemas_name) {
+            if parent_stack.contains(&schemas_name) {
                 // If schema has been already compiled just refer to it
                 Ok(DataTypeWithSchema {
                     type_or_ref: TypeOrSchemaRef::Reference(schemas_name),
